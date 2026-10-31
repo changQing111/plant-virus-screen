@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+validation*/
+*_res/
+*.bam
+*.bai
+*.fastq*
+*.fq*
+*.dmnd
+*.hmm
+taxonomy_data/
