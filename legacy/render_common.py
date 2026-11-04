@@ -64,9 +64,21 @@ def _char_width(ch, bold):
 
 
 def text_width(s, size, bold=False):
-    """Approximate rendered width (in figure px) of ``s`` at font ``size``."""
+    """Approximate rendered width (in figure px) of ``s`` at font ``size``.
+
+    Latin-1 text uses Helvetica metrics; strings containing CJK or other
+    non-latin glyphs fall back to a full-width/half-width approximation
+    (CJK glyphs are roughly 1 em, ASCII half an em in CID fonts).
+    """
     if not s:
         return 0.0
+    try:
+        s.encode("latin-1")
+    except UnicodeEncodeError:
+        width = 0.0
+        for ch in s:
+            width += 0.5 if ord(ch) < 0x2E80 else 1.0
+        return width * float(size)
     return sum(_char_width(ch, bold) for ch in s) * float(size)
 
 
@@ -401,12 +413,22 @@ def render_pdf_stream(fig):
             elif op["anchor"] == "end":
                 x -= width
             y = height - op["y"]
-            font = "/F2" if op["bold"] else "/F1"
+            try:
+                op["s"].encode("latin-1")
+                cjk = False
+            except UnicodeEncodeError:
+                cjk = True
+            if cjk:
+                font = "/F3"
+                payload = "<{}>".format(op["s"].encode("utf-16-be").hex())
+            else:
+                font = "/F2" if op["bold"] else "/F1"
+                payload = "({})".format(_pdf_text_escape(op["s"]))
             out.append("{} rg".format(_col(op["fill"])))
             out.append("BT")
             out.append("{} {:.2f} Tf".format(font, op["size"] * k))
             out.append("1 0 0 1 {:.2f} {:.2f} Tm".format(x * k, y * k))
-            out.append("({}) Tj".format(_pdf_text_escape(op["s"])))
+            out.append("{} Tj".format(payload))
             out.append("ET")
         elif kind == "rect":
             x = op["x"] * k
@@ -533,13 +555,23 @@ def write_pdf_file(fig, path):
     objects[2] = b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
     objects[3] = (
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w:.2f} {h:.2f}] "
-        "/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>"
+        "/Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >> >> /Contents 4 0 R >>"
     ).format(w=page_w, h=page_h).encode("latin-1")
     objects[4] = (
         b"<< /Length " + str(len(content)).encode("latin-1") + b" >>\nstream\n" + content + b"\nendstream"
     )
     objects[5] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
     objects[6] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
+    # Non-embedded CID font for CJK text (F3). Most PDF viewers substitute a
+    # system CJK font for STSong-Light; strings are written UTF-16BE hex.
+    objects[7] = (
+        b"<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light "
+        b"/Encoding /UniGB-UCS2-H /DescendantFonts [8 0 R] >>"
+    )
+    objects[8] = (
+        b"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light "
+        b"/CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 5 >> /DW 1000 >>"
+    )
     buf = bytearray()
     buf += b"%PDF-1.4\n"
     offsets = {}

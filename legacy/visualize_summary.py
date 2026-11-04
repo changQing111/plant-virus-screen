@@ -270,6 +270,28 @@ def _panel_coverage_scatter(fig, rows, top_y, base_y, x_left, x_right, breadth_t
     fig.text(x0 + 8, top_y + 16 + plot_h - 10, "Dashed lines mark the report mapping thresholds; grade A additionally requires multi-source viral evidence.", **small_style)
 
 
+def _panel_glossary(fig, top_y, breadth_threshold, depth_threshold):
+    """Bilingual glossary block at the bottom of the dashboard."""
+    fig.text(24, top_y, "Glossary 术语表", bold=True, **{"size": 13, "fill": "#222222"})
+    lines = [
+        "Grade A | A 级：至少两类证据（nt / 蛋白 / RdRP 结构域）、竞争最佳命中为病毒，且回贴广度≥1x 不低于 {:.2f}、平均深度不低于 {}".format(breadth_threshold, _fmt_count(depth_threshold)),
+        "Grade B | B 级：同样多类证据且竞争最佳命中为病毒，但回贴验证缺失或未达标",
+        "Grade C | C 级：仅有单一类证据，或竞争情况未解决",
+        "Grade D | D 级：竞争最佳命中为细胞来源（宿主 / 细菌 / 真菌），大概率非病毒序列",
+        "breadth >=1x | 广度：contig 上被至少 1 条高质量回贴 reads 覆盖的位置比例（面板三纵轴）",
+        "mean depth | 平均深度：逐位置回贴深度的平均值（面板三横轴，对数刻度）",
+        "MAPQ>=20 | 仅统计比对质量不低于 20 的回贴 reads，排除错配与多位点比对的噪声",
+        "Reference-related group | 参考相关分组：推断与同一条参考病毒相关的全部 contig（面板二每行一组）",
+        "Log scale | 对数轴：面板一纵轴与面板三横轴按 10 的幂刻度，用于同时展示悬殊的数量级",
+        "Grades are heuristic review priorities, not infection or species confirmation | 分级仅是启发式复核优先级，不构成感染、物种或新病毒的确认",
+    ]
+    y = top_y + 26
+    for line in lines:
+        fig.text(24, y, line, **{"size": 11, "fill": "#555555"})
+        y += 18
+    return y + 16
+
+
 def build_figure(rows, groups, breadth_threshold, depth_threshold):
     counts = {}
     for row in rows:
@@ -289,6 +311,8 @@ def build_figure(rows, groups, breadth_threshold, depth_threshold):
     next_y = _panel_group_stack(fig, groups, 320, 15, 24, 1330)
     scatter_top = max(760, next_y + 40)
     _panel_coverage_scatter(fig, rows, scatter_top, scatter_top + 260, 24, 1330, breadth_threshold, depth_threshold)
+    glossary_bottom = _panel_glossary(fig, scatter_top + 260 + 70, breadth_threshold, depth_threshold)
+    fig.height = max(1120, glossary_bottom)
     return fig, meta_text
 
 
