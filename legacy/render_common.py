@@ -22,7 +22,9 @@ PDF, so ``write_svg`` is accepted but ignored.
 
 import colorsys
 import html
+import io
 import math
+import os
 from pathlib import Path
 
 # CSS px (96 dpi) -> PDF points (72 dpi).
@@ -54,6 +56,97 @@ _HELVETICA_BOLD = (
 
 _FALLBACK_WIDTH = 0.55
 
+# ---------------------------------------------------------------------------
+# CJK font support for the PDF backend
+#
+# Text containing non-latin-1 characters is rendered through an embedded
+# subset of an open-licence CJK TrueType font (default search order below,
+# override with the PVS_CJK_FONT environment variable). Embedding the
+# subset guarantees correct display in every PDF viewer; when no usable
+# font + fontTools installation is found we fall back to a non-embedded
+# Type0 reference (STSong-Light) that viewers substitute themselves.
+# ---------------------------------------------------------------------------
+
+_CJK_FONT_CANDIDATES = [
+    "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
+    "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
+    "/usr/share/fonts/cjkuni-uming/uming.ttc",
+]
+
+_CJK_METRICS_CACHE = {}
+
+
+def _find_cjk_font_path():
+    override = os.environ.get("PVS_CJK_FONT")
+    if override and Path(override).is_file():
+        return override
+    for candidate in _CJK_FONT_CANDIDATES:
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def _cjk_metrics():
+    """Unicode -> (glyph id, advance width, unitsPerEm) map, cached.
+
+    Returns None when fontTools or a CJK font is unavailable.
+    """
+    if _CJK_METRICS_CACHE:
+        return _CJK_METRICS_CACHE.get("metrics")
+    metrics = None
+    path = _find_cjk_font_path()
+    if path:
+        try:
+            from fontTools.ttLib import TTFont
+
+            # fontNumber=0 selects the first font of a TTC collection and is
+            # ignored for plain TTF/OTF files.
+            font = TTFont(path, fontNumber=0)
+            cmap = font.getBestCmap()
+            hmtx = font["hmtx"]
+            upem = font["head"].unitsPerEm
+            gid = {}
+            adv = {}
+            for code, glyph_name in cmap.items():
+                gid[code] = font.getGlyphID(glyph_name)
+                adv[code] = hmtx[glyph_name][0]
+            metrics = {"path": path, "gid": gid, "adv": adv, "upem": upem}
+        except Exception:
+            metrics = None
+    _CJK_METRICS_CACHE["metrics"] = metrics
+    return metrics
+
+
+def _subset_cjk_font(used_chars):
+    """Subset the CJK font to ``used_chars``; returns (ttf_bytes, metrics).
+
+    A fresh TTFont is opened every call so the cached metrics font object
+    is never mutated; retain_gids keeps glyph numbering stable, which is
+    what the embedded Identity-H text codes rely on.
+    """
+    metrics = _cjk_metrics()
+    from fontTools import subset as _subset
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(metrics["path"], fontNumber=0)
+    unicodes = sorted(ord(ch) for ch in used_chars if ord(ch) in metrics["gid"])
+    options = _subset.Options()
+    options.retain_gids = True
+    subsetter = _subset.Subsetter(options)
+    subsetter.populate(unicodes=unicodes)
+    subsetter.subset(font)
+    buffer = io.BytesIO()
+    font.save(buffer)
+    return buffer.getvalue(), metrics
+
+
+def _has_nonlatin(s):
+    try:
+        s.encode("latin-1")
+    except UnicodeEncodeError:
+        return True
+    return False
+
 
 def _char_width(ch, bold):
     code = ord(ch)
@@ -66,15 +159,25 @@ def _char_width(ch, bold):
 def text_width(s, size, bold=False):
     """Approximate rendered width (in figure px) of ``s`` at font ``size``.
 
-    Latin-1 text uses Helvetica metrics; strings containing CJK or other
-    non-latin glyphs fall back to a full-width/half-width approximation
-    (CJK glyphs are roughly 1 em, ASCII half an em in CID fonts).
+    Latin-1 text uses Helvetica metrics; text containing CJK glyphs uses
+    the loaded CJK font advances when available, otherwise a
+    full-width/half-width approximation.
     """
     if not s:
         return 0.0
     try:
         s.encode("latin-1")
     except UnicodeEncodeError:
+        metrics = _cjk_metrics()
+        if metrics:
+            total = 0.0
+            for ch in s:
+                advance = metrics["adv"].get(ord(ch))
+                if advance is None:
+                    total += 0.5 if ord(ch) < 0x2E80 else 1.0
+                else:
+                    total += advance / float(metrics["upem"])
+            return total * float(size)
         width = 0.0
         for ch in s:
             width += 0.5 if ord(ch) < 0x2E80 else 1.0
@@ -391,8 +494,13 @@ def _col(color):
     return "{:.4f} {:.4f} {:.4f}".format(*hex_to_rgb01(color))
 
 
-def render_pdf_stream(fig):
-    """Build the PDF page content stream for the figure (text ops in pt)."""
+def render_pdf_stream(fig, cjk_mode="ucs2"):
+    """Build the PDF page content stream for the figure (text ops in pt).
+
+    ``cjk_mode``: "none" (no CJK text), "gid" (text codes are glyph ids of
+    the embedded subset font, Identity-H), or "ucs2" (fallback: UTF-16BE
+    codes for the non-embedded STSong-Light reference).
+    """
     k = PT_PER_PX
     height = fig.height
     out = []
@@ -413,14 +521,18 @@ def render_pdf_stream(fig):
             elif op["anchor"] == "end":
                 x -= width
             y = height - op["y"]
-            try:
-                op["s"].encode("latin-1")
-                cjk = False
-            except UnicodeEncodeError:
-                cjk = True
+            cjk = _has_nonlatin(op["s"])
             if cjk:
                 font = "/F3"
-                payload = "<{}>".format(op["s"].encode("utf-16-be").hex())
+                if cjk_mode == "gid":
+                    metrics = _cjk_metrics()
+                    codes = []
+                    for ch in op["s"]:
+                        glyph = metrics["gid"].get(ord(ch), 0)
+                        codes.append("{:04X}".format(glyph))
+                    payload = "<{}>".format("".join(codes))
+                else:
+                    payload = "<{}>".format(op["s"].encode("utf-16-be").hex())
             else:
                 font = "/F2" if op["bold"] else "/F1"
                 payload = "({})".format(_pdf_text_escape(op["s"]))
@@ -544,26 +656,98 @@ def render_pdf_stream(fig):
     return "\n".join(out)
 
 
-def write_pdf_file(fig, path):
-    """Write the figure as a one-page vector PDF (Helvetica core fonts)."""
-    k = PT_PER_PX
-    page_w = max(1.0, fig.width * k)
-    page_h = max(1.0, fig.height * k)
-    content = render_pdf_stream(fig).encode("latin-1", "replace")
+def _tounicode_cmap(entries):
+    """ToUnicode CMap stream body: [(gid, char)] -> bfchar blocks of 100."""
+    lines = [
+        "/CIDInit /ProcSet findresource begin",
+        "12 dict begin",
+        "begincmap",
+        "/CMapName /Adobe-Identity-UCS def",
+        "/CMapType 2 def",
+        "1 begincodespacerange",
+        "<0000> <ffff>",
+        "endcodespacerange",
+    ]
+    for start in range(0, len(entries), 100):
+        chunk = entries[start : start + 100]
+        lines.append("{} beginbfchar".format(len(chunk)))
+        for gid, ch in chunk:
+            lines.append("<{:04X}> <{}>".format(gid, ch.encode("utf-16-be").hex().upper()))
+        lines.append("endbfchar")
+    lines.extend(["endcmap", "CMapName currentdict /CMap defineresource pop", "end", "end"])
+    return "\n".join(lines)
+
+
+def _embedded_cjk_font_objects(used_chars):
+    """Build PDF objects for an embedded subset CJK font.
+
+    Returns (dict of objects, next_free_number). Object layout:
+      7 Type0 (Identity-H) - 8 CIDFontType2 - 9 FontDescriptor
+      10 FontFile2 stream  - 11 ToUnicode stream
+    """
+    from fontTools.ttLib import TTFont
+
+    ttf_bytes, metrics = _subset_cjk_font(used_chars)
+    font = TTFont(metrics["path"], fontNumber=0)
+    head = font["head"]
+    hhea = font["hhea"]
+    upem = float(head.unitsPerEm)
+    scale = 1000.0 / upem
+    bbox = [
+        int(round(head.xMin * scale)),
+        int(round(head.yMin * scale)),
+        int(round(head.xMax * scale)),
+        int(round(head.yMax * scale)),
+    ]
+    ascent = int(round(hhea.ascent * scale))
+    descent = int(round(hhea.descent * scale))
+
+    # Widths and ToUnicode entries keyed by glyph id (retain_gids keeps the
+    # numbering of the source font, matching the Identity-H text codes).
+    width_entries = []
+    tounicode_entries = []
+    for ch in used_chars:
+        code = ord(ch)
+        if code not in metrics["gid"]:
+            continue
+        gid = metrics["gid"][code]
+        advance = int(round(metrics["adv"][code] * scale))
+        width_entries.append((gid, advance))
+        tounicode_entries.append((gid, ch))
+    width_entries.sort()
+
+    w_array = " ".join("{} [{}]".format(gid, adv) for gid, adv in width_entries)
     objects = {}
-    objects[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
-    objects[2] = b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
-    objects[3] = (
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w:.2f} {h:.2f}] "
-        "/Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >> >> /Contents 4 0 R >>"
-    ).format(w=page_w, h=page_h).encode("latin-1")
-    objects[4] = (
-        b"<< /Length " + str(len(content)).encode("latin-1") + b" >>\nstream\n" + content + b"\nendstream"
+    objects[7] = (
+        "<< /Type /Font /Subtype /Type0 /BaseFont /PVSSubset "
+        "/Encoding /Identity-H /DescendantFonts [8 0 R] /ToUnicode 11 0 R >>"
+    ).encode("latin-1")
+    objects[8] = (
+        "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /PVSSubset "
+        "/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+        "/FontDescriptor 9 0 R /DW 1000 /W [{}] /CIDToGIDMap /Identity >>"
+    ).format(w_array).encode("latin-1")
+    objects[9] = (
+        "<< /Type /FontDescriptor /FontName /PVSSubset /Flags 4 "
+        "/FontBBox [{0} {1} {2} {3}] /ItalicAngle 0 /Ascent {4} /Descent {5} "
+        "/CapHeight {4} /StemV 80 /FontFile2 10 0 R >>"
+    ).format(bbox[0], bbox[1], bbox[2], bbox[3], ascent, descent).encode("latin-1")
+    objects[10] = (
+        b"<< /Length " + str(len(ttf_bytes)).encode("latin-1")
+        + b" /Length1 " + str(len(ttf_bytes)).encode("latin-1")
+        + b" >>\nstream\n" + ttf_bytes + b"\nendstream"
     )
-    objects[5] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
-    objects[6] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
-    # Non-embedded CID font for CJK text (F3). Most PDF viewers substitute a
-    # system CJK font for STSong-Light; strings are written UTF-16BE hex.
+    tounicode = _tounicode_cmap(tounicode_entries).encode("latin-1")
+    objects[11] = (
+        b"<< /Length " + str(len(tounicode)).encode("latin-1")
+        + b" >>\nstream\n" + tounicode + b"\nendstream"
+    )
+    return objects, 12
+
+
+def _fallback_cjk_font_objects():
+    """Non-embedded Type0 CJK font (STSong-Light) for fontless environments."""
+    objects = {}
     objects[7] = (
         b"<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light "
         b"/Encoding /UniGB-UCS2-H /DescendantFonts [8 0 R] >>"
@@ -572,6 +756,55 @@ def write_pdf_file(fig, path):
         b"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light "
         b"/CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 5 >> /DW 1000 >>"
     )
+    return objects, 9
+
+
+def write_pdf_file(fig, path):
+    """Write the figure as a one-page vector PDF.
+
+    Helvetica core fonts carry latin text; CJK text uses an embedded
+    subset of an open-licence font when available (any viewer shows it
+    correctly), otherwise a non-embedded Type0 reference.
+    """
+    k = PT_PER_PX
+    page_w = max(1.0, fig.width * k)
+    page_h = max(1.0, fig.height * k)
+
+    cjk_strings = [
+        op["s"] for op in fig.ops if op["op"] == "text" and _has_nonlatin(op["s"])
+    ]
+    if not cjk_strings:
+        cjk_mode = "none"
+    elif _cjk_metrics():
+        cjk_mode = "gid"
+    else:
+        cjk_mode = "ucs2"
+
+    content = render_pdf_stream(fig, cjk_mode=cjk_mode).encode("latin-1", "replace")
+    objects = {}
+    objects[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objects[2] = b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
+    resources = "<< /Font << /F1 5 0 R /F2 6 0 R"
+    if cjk_mode != "none":
+        resources += " /F3 7 0 R"
+    resources += " >> >>"
+    objects[3] = (
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w:.2f} {h:.2f}] "
+        "/Resources {r} /Contents 4 0 R >>"
+    ).format(w=page_w, h=page_h, r=resources).encode("latin-1")
+    objects[4] = (
+        b"<< /Length " + str(len(content)).encode("latin-1") + b" >>\nstream\n" + content + b"\nendstream"
+    )
+    objects[5] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+    objects[6] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
+    if cjk_mode == "gid":
+        cjk_objects, count = _embedded_cjk_font_objects(set("".join(cjk_strings)))
+    elif cjk_mode == "ucs2":
+        cjk_objects, count = _fallback_cjk_font_objects()
+    else:
+        cjk_objects, count = {}, 7
+    objects.update(cjk_objects)
+
     buf = bytearray()
     buf += b"%PDF-1.4\n"
     offsets = {}
@@ -579,7 +812,6 @@ def write_pdf_file(fig, path):
         offsets[num] = len(buf)
         buf += "{} 0 obj\n".format(num).encode("latin-1") + objects[num] + b"\nendobj\n"
     xref_pos = len(buf)
-    count = max(objects) + 1
     buf += "xref\n0 {}\n".format(count).encode("latin-1")
     buf += b"0000000000 65535 f \n"
     for num in sorted(objects):
