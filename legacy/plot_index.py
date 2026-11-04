@@ -188,7 +188,9 @@ def build_index(report_dir, out_name="index.html"):
         if entries:
             sections.append(_section_html(spec["title"], spec["subdir"], entries, spec["kind"]))
             figure_count += sum(1 for entry in entries if entry["html"])
-    if not sections:
+    summary_path = report_dir / "report_summary.html"
+    have_summary = summary_path.is_file()
+    if not sections and not have_summary:
         return None
     parts = []
     parts.append("<!DOCTYPE html>")
@@ -214,6 +216,12 @@ def build_index(report_dir, out_name="index.html"):
     parts.append("<body>")
     parts.append("<h1>图形索引</h1>")
     parts.append("<p>共 {} 张图形摘要，链接均相对本页。HTML 用于浏览器查看（含悬停提示），PDF 为矢量导出，可缩放不失真。</p>".format(figure_count))
+    if have_summary:
+        summary_pdf = report_dir / "report_summary.pdf"
+        pdf_link = " / <a href='report_summary.pdf'>PDF</a>" if summary_pdf.is_file() else ""
+        parts.append(
+            "<p><a href='report_summary.html'>报告汇总图</a>（分级分布 · 分组构成 · 覆盖总览）{}</p>".format(pdf_link)
+        )
     if (report_dir / "REPORT.md").is_file():
         parts.append("<p><a href='REPORT.md'>返回报告（REPORT.md）</a></p>")
     parts.extend(sections)

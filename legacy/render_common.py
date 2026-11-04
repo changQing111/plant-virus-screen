@@ -189,6 +189,21 @@ class Figure(object):
             }
         )
 
+    def circle(self, cx, cy, r, fill="#111111", stroke=None, stroke_width=1.0, title=None):
+        """Circle (scatter points); PDF backend approximates with 4 bezier arcs."""
+        self.ops.append(
+            {
+                "op": "circle",
+                "cx": float(cx),
+                "cy": float(cy),
+                "r": float(r),
+                "fill": fill,
+                "stroke": stroke,
+                "stroke_width": float(stroke_width),
+                "title": title,
+            }
+        )
+
     def gradient_rect(self, x, y, w, h, color_fn, steps=96, stroke="#bbbbbb"):
         """Horizontal gradient bar; color_fn(frac in 0..1) -> '#RRGGBB'."""
         self.ops.append(
@@ -302,6 +317,17 @@ def render_svg(fig):
             if op["stroke"]:
                 attrs += " stroke='{}' stroke-width='{}'".format(op["stroke"], _fmt(op["stroke_width"]))
             parts.append("<polygon {}/>".format(attrs))
+        elif kind == "circle":
+            attrs = "cx='{cx}' cy='{cy}' r='{r}' fill='{fill}'".format(
+                cx=_fmt(op["cx"]), cy=_fmt(op["cy"]), r=_fmt(op["r"]), fill=op["fill"]
+            )
+            if op["stroke"]:
+                attrs += " stroke='{}' stroke-width='{}'".format(op["stroke"], _fmt(op["stroke_width"]))
+            child = _title_xml(op)
+            if child:
+                parts.append("<circle {}>{}</circle>".format(attrs, child))
+            else:
+                parts.append("<circle {}/>".format(attrs))
         elif kind == "gradient_rect":
             index = gradient_ops.index(op)
             attrs = "x='{x}' y='{y}' width='{w}' height='{h}' fill='url(#grad-{i})'".format(
@@ -426,6 +452,45 @@ def render_pdf_stream(fig):
             if has_stroke:
                 out.append("{} RG".format(_col(op["stroke"])))
                 out.append("{:.2f} w".format(op["stroke_width"] * k))
+            if has_fill and has_stroke:
+                out.append("B")
+            elif has_fill:
+                out.append("f")
+            elif has_stroke:
+                out.append("S")
+        elif kind == "circle":
+            cx = op["cx"] * k
+            cy = (height - op["cy"]) * k
+            r = op["r"] * k
+            kr = 0.5523 * r
+            has_fill = op["fill"] is not None
+            has_stroke = op["stroke"] is not None
+            if has_fill:
+                out.append("{} rg".format(_col(op["fill"])))
+            if has_stroke:
+                out.append("{} RG".format(_col(op["stroke"])))
+                out.append("{:.2f} w".format(op["stroke_width"] * k))
+            out.append("{:.2f} {:.2f} m".format(cx - r, cy))
+            out.append(
+                "{:.2f} {:.2f} {:.2f} {:.2f} {:.2f} {:.2f} c".format(
+                    cx - r, cy + kr, cx - kr, cy + r, cx, cy + r
+                )
+            )
+            out.append(
+                "{:.2f} {:.2f} {:.2f} {:.2f} {:.2f} {:.2f} c".format(
+                    cx + kr, cy + r, cx + r, cy + kr, cx + r, cy
+                )
+            )
+            out.append(
+                "{:.2f} {:.2f} {:.2f} {:.2f} {:.2f} {:.2f} c".format(
+                    cx + r, cy - kr, cx + kr, cy - r, cx, cy - r
+                )
+            )
+            out.append(
+                "{:.2f} {:.2f} {:.2f} {:.2f} {:.2f} {:.2f} c".format(
+                    cx - kr, cy - r, cx - r, cy - kr, cx - r, cy
+                )
+            )
             if has_fill and has_stroke:
                 out.append("B")
             elif has_fill:
