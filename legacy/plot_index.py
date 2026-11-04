@@ -189,8 +189,10 @@ def build_index(report_dir, out_name="index.html"):
             sections.append(_section_html(spec["title"], spec["subdir"], entries, spec["kind"]))
             figure_count += sum(1 for entry in entries if entry["html"])
     summary_path = report_dir / "report_summary.html"
+    composition_path = report_dir / "composition_summary.html"
     have_summary = summary_path.is_file()
-    if not sections and not have_summary:
+    have_composition = composition_path.is_file()
+    if not sections and not have_summary and not have_composition:
         return None
     parts = []
     parts.append("<!DOCTYPE html>")
@@ -221,6 +223,12 @@ def build_index(report_dir, out_name="index.html"):
         pdf_link = " / <a href='report_summary.pdf'>PDF</a>" if summary_pdf.is_file() else ""
         parts.append(
             "<p><a href='report_summary.html'>报告汇总图</a>（分级分布 · 分组构成 · 覆盖总览）{}</p>".format(pdf_link)
+        )
+    if have_composition:
+        composition_pdf = report_dir / "composition_summary.pdf"
+        pdf_link = " / <a href='composition_summary.pdf'>PDF</a>" if composition_pdf.is_file() else ""
+        parts.append(
+            "<p><a href='composition_summary.html'>分类组成图</a>（宿主来源 · 基因组组成 · 植物病毒状态）{}</p>".format(pdf_link)
         )
     if (report_dir / "REPORT.md").is_file():
         parts.append("<p><a href='REPORT.md'>返回报告（REPORT.md）</a></p>")
