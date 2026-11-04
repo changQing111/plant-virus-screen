@@ -97,6 +97,11 @@ def build(src,out,vmr,ntf,aaf,plots,pdf,breadth,depth):
    if kind=='protein':cmd+=['--protein-fasta',str(aaf)]
    if not pdf:cmd+=['--no-pdf']
    with open(out/(kind+'_plots.log'),'w') as log:subprocess.run(cmd,stdout=log,stderr=subprocess.STDOUT,check=True)
+  depth_tsv=src/'depth_mapq20.tsv'
+  if depth_tsv.is_file():
+   cmd=[sys.executable,str(ROOT/'legacy'/'batch_visualize_coverage.py'),'--final-tsv',str(out/'plot_candidates.tsv'),'--depth',str(depth_tsv),'--module',str(ROOT/'legacy'/'visualize_coverage.py'),'--outdir',str(out/'coverage_plots')]
+   if not pdf:cmd+=['--no-pdf']
+   with open(out/'coverage_plots.log','w') as log:subprocess.run(cmd,stdout=log,stderr=subprocess.STDOUT,check=True)
  figures=[p for p in out.rglob('*.html') if p.name!='index.html']
  if selected and any(r.get('best_nt_hit') or r.get('best_protein_hit') for r in selected) and not figures:raise ValueError('Plotting requested but no HTML figures generated')
  if figures:plot_index.build_index(out)
@@ -106,5 +111,5 @@ def build(src,out,vmr,ntf,aaf,plots,pdf,breadth,depth):
  assert sum(g['contig_count'] for g in groups)==len(ids)
  validation={'status':'passed','input_candidates':len(ids),'output_candidates':len(check),'grade_counts':counts,'plot_candidates':len(selected),'html_figures':len(figures),'pdf_figures':len(pdfs),'input_sha256':{n:sha(src/n) for n in required},'vmr_sha256':sha(vmr),'thresholds':{'mapq20_breadth_1x':breadth,'mapq20_mean_depth':depth},'grading_version':'0.1.0-heuristic'}
  (out/'validation.json').write_text(json.dumps(validation,indent=2),encoding='utf-8')
- (out/'REPORT.md').write_text('# 病毒候选证据报告\n\n候选数：'+str(len(ids))+'。全部保留，无静默剔除。\n\n分级计数：'+json.dumps(counts)+'\n\nA：多类证据、病毒竞争最佳命中、回贴达到阈值；B：多类证据但验证不完整；C：单类或未解决证据；D：细胞来源竞争冲突。分级是启发式复核优先级，不是感染、物种或新病毒确认。\n\n图形摘要索引见 index.html；PDF 为矢量导出，缩放不失真。\n\nICTV 注释复用传统 accession/name/genus 映射，宿主字段仅描述参考病毒。汇总按推断参考相关名称分组，组数不是病毒物种数。竞争证据当前只使用最高分分类，尚未完成区域级病毒/细胞分数竞争，高等级仍需人工复核。\n',encoding='utf-8')
+ (out/'REPORT.md').write_text('# 病毒候选证据报告\n\n候选数：'+str(len(ids))+'。全部保留，无静默剔除。\n\n分级计数：'+json.dumps(counts)+'\n\nA：多类证据、病毒竞争最佳命中、回贴达到阈值；B：多类证据但验证不完整；C：单类或未解决证据；D：细胞来源竞争冲突。分级是启发式复核优先级，不是感染、物种或新病毒确认。\n\n图形摘要索引见 index.html（参考比对图与候选覆盖深度图）；PDF 为矢量导出，缩放不失真。覆盖图仅在有回贴深度数据时生成。\n\nICTV 注释复用传统 accession/name/genus 映射，宿主字段仅描述参考病毒。汇总按推断参考相关名称分组，组数不是病毒物种数。竞争证据当前只使用最高分分类，尚未完成区域级病毒/细胞分数竞争，高等级仍需人工复核。\n',encoding='utf-8')
  return validation

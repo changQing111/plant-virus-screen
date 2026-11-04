@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Plot index page for a plant-virus-screen report directory.
 
-Scans the ``nt_plots/`` and ``protein_plots/`` subdirectories (batch
-manifests first, filename fallback second) and writes a self-contained
-``index.html`` at the report root that lists every generated figure with
-relative links to the HTML view and the PDF export, plus contig/HSP
-counts, so figures can be browsed and located quickly.
+Scans the ``nt_plots/``, ``protein_plots/`` and ``coverage_plots``
+subdirectories (batch manifests first, filename fallback second) and
+writes a self-contained ``index.html`` at the report root that lists
+every generated figure with relative links to the HTML view and the PDF
+export, plus per-kind counts (contigs/HSPs for alignment figures,
+length/mean depth/breadth for coverage figures), so figures can be
+browsed and located quickly.
 
 Used by report.py after plot generation and runnable standalone:
 
@@ -19,8 +21,10 @@ from pathlib import Path
 
 NT_DIR = "nt_plots"
 PROTEIN_DIR = "protein_plots"
+COVERAGE_DIR = "coverage_plots"
 NT_MANIFEST = "reference_graphic_summary_manifest.tsv"
 PROTEIN_MANIFEST = "protein_graphic_summary_manifest.tsv"
+COVERAGE_MANIFEST = "coverage_graphic_summary_manifest.tsv"
 
 
 def _read_manifest(path):
@@ -33,11 +37,11 @@ def _read_manifest(path):
     return rows
 
 
-def _scan_fallback(plots_dir):
+def _scan_fallback(plots_dir, pattern, suffix):
     """Manifest-free fallback: derive entries from figure filenames."""
     entries = []
-    for path in sorted(plots_dir.glob("*.graphic_summary.html")):
-        stem = path.name[: -len(".graphic_summary.html")]
+    for path in sorted(plots_dir.glob(pattern)):
+        stem = path.name[: -len(suffix)]
         name = stem.replace("__", " ").replace("_", " ")
         pdf_path = path.with_suffix(".pdf")
         entries.append(
@@ -45,6 +49,9 @@ def _scan_fallback(plots_dir):
                 "name": name,
                 "contigs": "",
                 "hsps": "",
+                "length": "",
+                "mean_depth": "",
+                "breadth_1x": "",
                 "html": path.name,
                 "pdf": pdf_path.name if pdf_path.is_file() else "",
                 "status": "ok",
@@ -53,11 +60,11 @@ def _scan_fallback(plots_dir):
     return entries
 
 
-def collect_entries(report_dir, subdir, manifest_name, key_field, label_field):
-    plots_dir = Path(report_dir) / subdir
+def collect_entries(report_dir, spec):
+    plots_dir = Path(report_dir) / spec["subdir"]
     if not plots_dir.is_dir():
         return None
-    rows = _read_manifest(plots_dir / manifest_name)
+    rows = _read_manifest(plots_dir / spec["manifest"])
     if rows:
         entries = []
         for row in rows:
@@ -66,33 +73,41 @@ def collect_entries(report_dir, subdir, manifest_name, key_field, label_field):
             pdf_name = Path(pdf_field).name if pdf_field else ""
             if pdf_name and not (plots_dir / pdf_name).is_file():
                 pdf_name = ""
-            entries.append(
-                {
-                    "name": (row.get(label_field) or row.get(key_field) or "").strip(),
-                    "contigs": (row.get("contig_count") or "").strip(),
-                    "hsps": (row.get("hsp_count") or "").strip(),
-                    "html": html_name if html_name and (plots_dir / html_name).is_file() else "",
-                    "pdf": pdf_name,
-                    "status": (row.get("status") or "").strip(),
-                }
-            )
+            entry = {
+                "name": (row.get(spec["label_field"]) or row.get(spec["key_field"]) or "").strip(),
+                "contigs": (row.get("contig_count") or "").strip(),
+                "hsps": (row.get("hsp_count") or "").strip(),
+                "length": (row.get("length") or "").strip(),
+                "mean_depth": (row.get("mean_depth") or "").strip(),
+                "breadth_1x": (row.get("breadth_1x") or "").strip(),
+                "html": html_name if html_name and (plots_dir / html_name).is_file() else "",
+                "pdf": pdf_name,
+                "status": (row.get("status") or "").strip(),
+            }
+            entries.append(entry)
         return entries
-    return _scan_fallback(plots_dir)
+    return _scan_fallback(plots_dir, spec["glob"], spec["suffix"])
 
 
-def _section_html(title, subdir, entries):
+def _section_html(title, subdir, entries, kind):
     parts = []
     generated = [e for e in entries if e["html"]]
     parts.append("<h2>{}（{}/，共 {} 张）</h2>".format(html.escape(title), html.escape(subdir), len(generated)))
     parts.append("<table>")
-    parts.append("<tr><th>#</th><th>名称</th><th>contigs</th><th>HSPs</th><th>查看（HTML）</th><th>PDF</th></tr>")
+    if kind == "coverage":
+        header = "<tr><th>#</th><th>contig</th><th>长度 (bp)</th><th>平均深度</th><th>≥1x 广度</th><th>查看（HTML）</th><th>PDF</th></tr>"
+        span = 5
+    else:
+        header = "<tr><th>#</th><th>名称</th><th>contigs</th><th>HSPs</th><th>查看（HTML）</th><th>PDF</th></tr>"
+        span = 4
+    parts.append(header)
     shown = 0
     for entry in entries:
         if not entry["html"]:
             if entry["status"]:
                 parts.append(
-                    "<tr class='muted'><td>-</td><td>{}</td><td colspan='4'>{}</td></tr>".format(
-                        html.escape(entry["name"]), html.escape(entry["status"])
+                    "<tr class='muted'><td>-</td><td>{}</td><td colspan='{}'>{}</td></tr>".format(
+                        html.escape(entry["name"]), span, html.escape(entry["status"])
                     )
                 )
             continue
@@ -100,33 +115,78 @@ def _section_html(title, subdir, entries):
         pdf_cell = (
             "<a href='{}'>PDF</a>".format(html.escape(subdir + "/" + entry["pdf"])) if entry["pdf"] else ""
         )
-        parts.append(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td><a href='{}'>HTML</a></td><td>{}</td></tr>".format(
-                shown,
-                html.escape(entry["name"]),
-                html.escape(entry["contigs"]),
-                html.escape(entry["hsps"]),
-                html.escape(subdir + "/" + entry["html"]),
-                pdf_cell,
+        link_cell = "<a href='{}'>HTML</a>".format(html.escape(subdir + "/" + entry["html"]))
+        if kind == "coverage":
+            parts.append(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                    shown,
+                    html.escape(entry["name"]),
+                    html.escape(entry["length"]),
+                    html.escape(entry["mean_depth"]),
+                    html.escape(entry["breadth_1x"]),
+                    link_cell,
+                    pdf_cell,
+                )
             )
-        )
+        else:
+            parts.append(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                    shown,
+                    html.escape(entry["name"]),
+                    html.escape(entry["contigs"]),
+                    html.escape(entry["hsps"]),
+                    link_cell,
+                    pdf_cell,
+                )
+            )
     parts.append("</table>")
     return "\n".join(parts)
+
+
+def _section_specs():
+    return [
+        {
+            "title": "nt 参考序列比对图",
+            "subdir": NT_DIR,
+            "manifest": NT_MANIFEST,
+            "key_field": "reference",
+            "label_field": "reference_label",
+            "kind": "alignment",
+            "glob": "*.graphic_summary.html",
+            "suffix": ".graphic_summary.html",
+        },
+        {
+            "title": "蛋白参考比对图",
+            "subdir": PROTEIN_DIR,
+            "manifest": PROTEIN_MANIFEST,
+            "key_field": "protein",
+            "label_field": "protein_label",
+            "kind": "alignment",
+            "glob": "*.graphic_summary.html",
+            "suffix": ".graphic_summary.html",
+        },
+        {
+            "title": "候选覆盖深度图",
+            "subdir": COVERAGE_DIR,
+            "manifest": COVERAGE_MANIFEST,
+            "key_field": "contig_id",
+            "label_field": "contig_id",
+            "kind": "coverage",
+            "glob": "*.coverage_summary.html",
+            "suffix": ".coverage_summary.html",
+        },
+    ]
 
 
 def build_index(report_dir, out_name="index.html"):
     """Write ``index.html`` into ``report_dir``; returns its path or None."""
     report_dir = Path(report_dir)
-    section_specs = [
-        ("nt 参考序列比对图", NT_DIR, NT_MANIFEST, "reference", "reference_label"),
-        ("蛋白参考比对图", PROTEIN_DIR, PROTEIN_MANIFEST, "protein", "protein_label"),
-    ]
     sections = []
     figure_count = 0
-    for title, subdir, manifest, key_field, label_field in section_specs:
-        entries = collect_entries(report_dir, subdir, manifest, key_field, label_field)
+    for spec in _section_specs():
+        entries = collect_entries(report_dir, spec)
         if entries:
-            sections.append(_section_html(title, subdir, entries))
+            sections.append(_section_html(spec["title"], spec["subdir"], entries, spec["kind"]))
             figure_count += sum(1 for entry in entries if entry["html"])
     if not sections:
         return None
@@ -171,7 +231,7 @@ def main():
     parser.add_argument(
         "--report-dir",
         required=True,
-        help="Report directory containing nt_plots/ and/or protein_plots/",
+        help="Report directory containing nt_plots/, protein_plots/ and/or coverage_plots/",
     )
     args = parser.parse_args()
     out_path = build_index(args.report_dir)

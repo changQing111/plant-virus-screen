@@ -165,14 +165,27 @@ class Figure(object):
             }
         )
 
-    def polyline(self, points, stroke="#111111", stroke_width=1.0, title=None):
+    def polyline(self, points, stroke="#111111", stroke_width=1.0, dash=None, title=None):
         self.ops.append(
             {
                 "op": "polyline",
                 "points": [(float(px), float(py)) for px, py in points],
                 "stroke": stroke,
                 "stroke_width": float(stroke_width),
+                "dash": dash,
                 "title": title,
+            }
+        )
+
+    def polygon(self, points, fill="#bbbbbb", stroke=None, stroke_width=1.0):
+        """Closed filled polygon (e.g. area under a curve)."""
+        self.ops.append(
+            {
+                "op": "polygon",
+                "points": [(float(px), float(py)) for px, py in points],
+                "fill": fill,
+                "stroke": stroke,
+                "stroke_width": float(stroke_width),
             }
         )
 
@@ -274,11 +287,21 @@ def render_svg(fig):
             attrs = "points='{points}' fill='none' stroke='{stroke}' stroke-width='{sw}'".format(
                 points=points, stroke=op["stroke"], sw=_fmt(op["stroke_width"])
             )
+            if op.get("dash"):
+                attrs += " stroke-dasharray='{},{}'".format(_fmt(op["dash"][0]), _fmt(op["dash"][1]))
             child = _title_xml(op)
             if child:
                 parts.append("<polyline {}>{}</polyline>".format(attrs, child))
             else:
                 parts.append("<polyline {}/>".format(attrs))
+        elif kind == "polygon":
+            points = " ".join(
+                "{},{}".format(_fmt(px), _fmt(py)) for px, py in op["points"]
+            )
+            attrs = "points='{points}' fill='{fill}'".format(points=points, fill=op["fill"])
+            if op["stroke"]:
+                attrs += " stroke='{}' stroke-width='{}'".format(op["stroke"], _fmt(op["stroke_width"]))
+            parts.append("<polygon {}/>".format(attrs))
         elif kind == "gradient_rect":
             index = gradient_ops.index(op)
             attrs = "x='{x}' y='{y}' width='{w}' height='{h}' fill='url(#grad-{i})'".format(
@@ -379,12 +402,36 @@ def render_pdf_stream(fig):
         elif kind == "polyline":
             out.append("{} RG".format(_col(op["stroke"])))
             out.append("{:.2f} w".format(op["stroke_width"] * k))
+            if op.get("dash"):
+                out.append("[{:.2f} {:.2f}] 0 d".format(op["dash"][0] * k, op["dash"][1] * k))
             first = True
             for px, py in op["points"]:
                 operator = "m" if first else "l"
                 first = False
                 out.append("{:.2f} {:.2f} {}".format(px * k, (height - py) * k, operator))
             out.append("S")
+            if op.get("dash"):
+                out.append("[] 0 d")
+        elif kind == "polygon":
+            first = True
+            for px, py in op["points"]:
+                operator = "m" if first else "l"
+                first = False
+                out.append("{:.2f} {:.2f} {}".format(px * k, (height - py) * k, operator))
+            out.append("h")
+            has_fill = op["fill"] is not None
+            has_stroke = op["stroke"] is not None
+            if has_fill:
+                out.append("{} rg".format(_col(op["fill"])))
+            if has_stroke:
+                out.append("{} RG".format(_col(op["stroke"])))
+                out.append("{:.2f} w".format(op["stroke_width"] * k))
+            if has_fill and has_stroke:
+                out.append("B")
+            elif has_fill:
+                out.append("f")
+            elif has_stroke:
+                out.append("S")
         elif kind == "gradient_rect":
             steps = max(2, op["steps"])
             slice_w = op["w"] / steps
