@@ -2,14 +2,15 @@
 
 import argparse
 import csv
-import html
-import math
-import os
 import re
-import shutil
-import subprocess
-import colorsys
+import sys
 from pathlib import Path
+
+_LEGACY_DIR = str(Path(__file__).resolve().parent)
+if _LEGACY_DIR not in sys.path:
+    sys.path.insert(0, _LEGACY_DIR)
+
+import render_common as rc
 
 
 class BlastxHit(object):
@@ -79,7 +80,7 @@ class BlastxHit(object):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Visualize blastx hits for one viral protein accession as a self-contained HTML summary with optional PDF export."
+        description="Visualize blastx hits for one viral protein accession as a self-contained HTML summary with a native vector PDF export."
     )
     parser.add_argument("--blastx", required=True, help="diamond blastx result file")
     parser.add_argument("--protein", required=True, help="Protein accession to visualize, e.g. tr|A0A165RBH9|A0A165RBH9_9VIRU")
@@ -113,7 +114,7 @@ def parse_args():
     parser.add_argument(
         "--no-svg",
         action="store_true",
-        help="Only write HTML (and optional PDF) and skip separate SVG export.",
+        help="Deprecated no-op kept for compatibility: standalone SVG output was replaced by native vector PDF.",
     )
     return parser.parse_args()
 
@@ -184,28 +185,11 @@ def anchor_hit(hit_list):
 
 
 def observed_identity_range(grouped_hits):
-    values = [hit.pident for hits in grouped_hits.values() for hit in hits]
-    if not values:
-        return 0.0, 100.0
-    low = min(values)
-    high = max(values)
-    if math.isclose(low, high):
-        low = max(0.0, low - 5.0)
-        high = min(100.0, high + 5.0)
-    return low, high
+    return rc.observed_identity_range(grouped_hits)
 
 
 def pident_to_color(pident, low, high):
-    if high <= low:
-        ratio = 0.5
-    else:
-        ratio = (pident - low) / (high - low)
-    ratio = max(0.0, min(1.0, ratio))
-    hue = (220.0 - 220.0 * ratio) / 360.0
-    saturation = 0.78
-    lightness = 0.50
-    r, g, b = colorsys.hls_to_rgb(hue, lightness, saturation)
-    return "#{:02X}{:02X}{:02X}".format(int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
+    return rc.pident_to_color(pident, low, high)
 
 
 def scale(position, length, x0, width):
@@ -243,6 +227,11 @@ def hit_title(hit):
 
 
 def build_html(protein, protein_label, grouped_hits):
+    """Build the two-panel figure (contig nt / protein aa) via the shared
+    rendering layer. Panel geometry and frame annotations are specific to
+    the protein view; drawing primitives come from rc.Figure so the same
+    figure renders to inline SVG (HTML) and native vector PDF.
+    """
     protein_length = next(iter(next(iter(grouped_hits.values())))).slen if grouped_hits else 0
     max_query_length = max((max(hit.qlen for hit in hits) for hits in grouped_hits.values()), default=0)
 
@@ -253,8 +242,12 @@ def build_html(protein, protein_label, grouped_hits):
 
     identity_low, identity_high = observed_identity_range(grouped_hits)
 
-    left_margin = 24
-    label_width = 250
+    label_style = {"size": 12, "fill": "#222222"}
+    subtle_style = {"size": 11, "fill": "#666666"}
+    axis_style = {"size": 11, "fill": "#555555"}
+    legend_style = {"size": 11, "fill": "#444444"}
+    coord_style = {"size": 9, "fill": "#333333", "anchor": "middle"}
+
     contig_x0 = 280
     contig_width = 620
     protein_x0 = 960
@@ -266,113 +259,102 @@ def build_html(protein, protein_label, grouped_hits):
     header_height = 150
     total_height = header_height + len(sorted_items) * row_height + 40
 
-    parts = []
-    parts.append("<!DOCTYPE html>")
-    parts.append("<html lang='en'>")
-    parts.append("<head>")
-    parts.append("<meta charset='utf-8'>")
-    parts.append("<title>{}</title>".format(html.escape(protein_label + " blastx summary")))
-    parts.append(
-        "<style>"
-        "body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#222;background:#fff;}"
-        "h1{font-size:22px;margin:0 0 8px 0;}"
-        ".meta{margin:0 0 18px 0;font-size:14px;color:#444;}"
-        "svg{border:1px solid #d0d0d0;background:#fafafa;}"
-        ".label{font-size:12px;fill:#222;}"
-        ".subtle{font-size:11px;fill:#666;}"
-        ".axis{font-size:11px;fill:#555;}"
-        ".protein-ref{fill:#111;stroke:#111;stroke-width:1;}"
-        ".protein-track{fill:#d9d9d9;stroke:#b0b0b0;stroke-width:1;}"
-        ".contig-track{fill:#a0a0a0;stroke:#8d8d8d;stroke-width:1;}"
-        ".legend-text{font-size:11px;fill:#444;}"
-        ".coord-text{font-size:9px;fill:#333;}"
-        "</style>"
+    fig = rc.Figure(1400, total_height)
+
+    meta_text = (
+        "Protein length: {} aa | Longest contig: {} nt | Displayed contigs: {} | Displayed HSPs: {} | "
+        "pident range: {:.3f}-{:.3f}"
+    ).format(
+        protein_length,
+        max_query_length,
+        len(sorted_items),
+        sum(len(hits) for _, hits in sorted_items),
+        identity_low,
+        identity_high,
     )
-    parts.append("</head>")
-    parts.append("<body>")
-    parts.append("<h1>{}</h1>".format(html.escape(protein_label)))
-    parts.append(
-        "<div class='meta'>Protein length: {} aa | Longest contig: {} nt | Displayed contigs: {} | Displayed HSPs: {} | "
-        "pident range: {:.3f}-{:.3f}</div>".format(
-            protein_length,
-            max_query_length,
-            len(sorted_items),
-            sum(len(hits) for _, hits in sorted_items),
-            identity_low,
-            identity_high,
-        )
+
+    fig.text(24, 28, "Left panel: contig nt coordinates. Right panel: protein aa coordinates.", **subtle_style)
+
+    fig.gradient_rect(
+        1080,
+        30,
+        220,
+        12,
+        lambda frac: pident_to_color(identity_low + (identity_high - identity_low) * frac, identity_low, identity_high),
+        stroke="#bbbbbb",
     )
-    parts.append("<svg width='1400' height='{}' viewBox='0 0 1400 {}'>".format(total_height, total_height))
-    parts.append("<text x='24' y='28' class='subtle'>Left panel: contig nt coordinates. Right panel: protein aa coordinates.</text>")
+    fig.text(1080, 58, "{:.2f}%".format(identity_low), **legend_style)
+    fig.text(1264, 58, "{:.2f}%".format(identity_high), **legend_style)
+    fig.text(1172, 58, "pident", **legend_style)
 
-    gradient_id = "pid-gradient"
-    parts.append("<defs>")
-    parts.append("<linearGradient id='{}' x1='0%' y1='0%' x2='100%' y2='0%'>".format(gradient_id))
-    for pct in (0, 25, 50, 75, 100):
-        pident = identity_low + (identity_high - identity_low) * (pct / 100.0)
-        parts.append("<stop offset='{}%' stop-color='{}'/>".format(pct, pident_to_color(pident, identity_low, identity_high)))
-    parts.append("</linearGradient>")
-    parts.append("</defs>")
-
-    parts.append("<rect x='1080' y='30' width='220' height='12' fill='url(#{})' stroke='#bbb'/>".format(gradient_id))
-    parts.append("<text x='1080' y='58' class='legend-text'>{:.2f}%</text>".format(identity_low))
-    parts.append("<text x='1264' y='58' class='legend-text'>{:.2f}%</text>".format(identity_high))
-    parts.append("<text x='1172' y='58' class='legend-text'>pident</text>")
-
-    parts.append("<text x='24' y='{}' class='label'>Protein reference</text>".format(protein_track_y + 4))
-    parts.append("<rect x='{:.2f}' y='{}' width='{:.2f}' height='{}' rx='2' class='protein-ref'/>".format(
+    fig.text(24, protein_track_y + 4, "Protein reference", **label_style)
+    fig.rect(
         protein_x0,
         protein_track_y - baseline_height / 2,
         protein_width,
         baseline_height,
-    ))
-    parts.append("<text x='{:.2f}' y='{}' class='axis'>1 aa</text>".format(protein_x0 - 10, protein_track_y + 24))
-    parts.append("<text x='{:.2f}' y='{}' class='axis'>{} aa</text>".format(protein_x0 + protein_width - 42, protein_track_y + 24, protein_length))
+        rx=2,
+        fill="#111111",
+        stroke="#111111",
+        stroke_width=1.0,
+    )
+    fig.text(protein_x0 - 10, protein_track_y + 24, "1 aa", **axis_style)
+    fig.text(protein_x0 + protein_width - 42, protein_track_y + 24, "{} aa".format(protein_length), **axis_style)
 
     current_y = protein_track_y + 56
     for qseqid, hits in sorted_items:
         qlen = max(hit.qlen for hit in hits)
         best = best_bitscore(hits)
         anchor = anchor_hit(hits)
-        parts.append("<text x='24' y='{}' class='label'>{}</text>".format(current_y + 4, html.escape(qseqid)))
-        parts.append(
-            "<text x='24' y='{}' class='subtle'>len={} nt | HSPs={} | best bitscore={:.1f} | strand={} | frame={}</text>".format(
-                current_y + 18,
+        fig.text(24, current_y + 4, qseqid, **label_style)
+        fig.text(
+            24,
+            current_y + 18,
+            "len={} nt | HSPs={} | best bitscore={:.1f} | strand={} | frame={}".format(
                 qlen,
                 len(hits),
                 best,
                 anchor.strand,
                 anchor.frame_label,
-            )
+            ),
+            **subtle_style
         )
 
         contig_y = current_y
         protein_y = current_y
 
-        parts.append("<rect x='{:.2f}' y='{}' width='{:.2f}' height='{}' rx='2' class='contig-track'/>".format(
+        fig.rect(
             contig_x0,
             contig_y - baseline_height / 2,
             scaled_width(qlen, max_query_length, contig_width),
             baseline_height,
-        ))
+            rx=2,
+            fill="#a0a0a0",
+            stroke="#8d8d8d",
+            stroke_width=1.0,
+        )
         contig_end_x = contig_x0 + scaled_width(qlen, max_query_length, contig_width)
         left_label = "{} nt".format(qlen) if anchor.strand == "-" else "1 nt"
         right_label = "1 nt" if anchor.strand == "-" else "{} nt".format(qlen)
-        parts.append("<text x='{:.2f}' y='{}' class='axis'>{}</text>".format(contig_x0 - 22, contig_y + 24, left_label))
-        parts.append("<text x='{:.2f}' y='{}' class='axis'>{}</text>".format(contig_end_x - 36, contig_y + 24, right_label))
+        fig.text(contig_x0 - 22, contig_y + 24, left_label, **axis_style)
+        fig.text(contig_end_x - 36, contig_y + 24, right_label, **axis_style)
 
-        parts.append("<rect x='{:.2f}' y='{}' width='{:.2f}' height='{}' rx='2' class='protein-track'/>".format(
+        fig.rect(
             protein_x0,
             protein_y - baseline_height / 2,
             protein_width,
             baseline_height,
-        ))
-        parts.append("<text x='{:.2f}' y='{}' class='axis'>1 aa</text>".format(protein_x0 - 10, protein_y + 24))
-        parts.append("<text x='{:.2f}' y='{}' class='axis'>{} aa</text>".format(protein_x0 + protein_width - 42, protein_y + 24, protein_length))
+            rx=2,
+            fill="#d9d9d9",
+            stroke="#b0b0b0",
+            stroke_width=1.0,
+        )
+        fig.text(protein_x0 - 10, protein_y + 24, "1 aa", **axis_style)
+        fig.text(protein_x0 + protein_width - 42, protein_y + 24, "{} aa".format(protein_length), **axis_style)
 
         for hit in hits:
             color = pident_to_color(hit.pident, identity_low, identity_high)
-            title = html.escape(hit_title(hit))
+            title = hit_title(hit)
 
             if anchor.strand == "+":
                 q_block_start = hit.query_min
@@ -386,158 +368,46 @@ def build_html(protein, protein_label, grouped_hits):
             sx = scale(hit.subject_min, protein_length, protein_x0, protein_width)
             sw = scaled_width(hit.subject_max - hit.subject_min + 1, protein_length, protein_width)
 
-            parts.append(
-                "<rect x='{:.2f}' y='{}' width='{:.2f}' height='{}' rx='2' fill='{}'><title>{}</title></rect>".format(
-                    qx,
-                    contig_y - hit_height / 2,
-                    qw,
-                    hit_height,
-                    color,
-                    title,
-                )
+            fig.rect(
+                qx,
+                contig_y - hit_height / 2,
+                qw,
+                hit_height,
+                rx=2,
+                fill=color,
+                title=title,
             )
-            parts.append(
-                "<rect x='{:.2f}' y='{}' width='{:.2f}' height='{}' rx='2' fill='{}'><title>{}</title></rect>".format(
-                    sx,
-                    protein_y - hit_height / 2,
-                    sw,
-                    hit_height,
-                    color,
-                    title,
-                )
+            fig.rect(
+                sx,
+                protein_y - hit_height / 2,
+                sw,
+                hit_height,
+                rx=2,
+                fill=color,
+                title=title,
             )
 
-            parts.append(
-                "<text x='{:.2f}' y='{:.2f}' text-anchor='middle' class='coord-text'>q:{}-{}</text>".format(
-                    qx + qw / 2.0,
-                    contig_y + baseline_height / 2 + 12,
-                    hit.query_min,
-                    hit.query_max,
-                )
+            fig.text(
+                qx + qw / 2.0,
+                contig_y + baseline_height / 2 + 12,
+                "q:{}-{}".format(hit.query_min, hit.query_max),
+                **coord_style
             )
-            parts.append(
-                "<text x='{:.2f}' y='{:.2f}' text-anchor='middle' class='coord-text'>s:{}-{}</text>".format(
-                    sx + sw / 2.0,
-                    protein_y - baseline_height / 2 - 6,
-                    hit.subject_min,
-                    hit.subject_max,
-                )
+            fig.text(
+                sx + sw / 2.0,
+                protein_y - baseline_height / 2 - 6,
+                "s:{}-{}".format(hit.subject_min, hit.subject_max),
+                **coord_style
             )
 
         current_y += row_height
 
-    parts.append("</svg>")
-    parts.append("</body>")
-    parts.append("</html>")
-    return "\n".join(parts)
+    return rc.render_html(fig, protein_label + " blastx summary", protein_label, meta_text)
 
 
-def extract_svg_text(html_text):
-    svg_match = re.search(r"(<svg\b.*?</svg>)", html_text, flags=re.S)
-    if not svg_match:
-        raise RuntimeError("Failed to extract <svg> block from generated HTML.")
-    svg_text = svg_match.group(1)
-
-    style_match = re.search(r"<style>(.*?)</style>", html_text, flags=re.S)
-    if style_match:
-        css = style_match.group(1)
-        css = re.sub(r"body\{.*?\}", "", css)
-        css = re.sub(r"h1\{.*?\}", "", css)
-        css = re.sub(r"\.meta\{.*?\}", "", css)
-        css = re.sub(r"svg\{.*?\}", "", css)
-        css = re.sub(r"\s+", " ", css).strip()
-        style_block = "<style type='text/css'>{}</style>".format(css)
-        svg_text = re.sub(r"(<svg\b[^>]*>)", r"\1\n" + style_block, svg_text, count=1)
-
-    if "xmlns=" not in svg_text.split(">", 1)[0]:
-        svg_text = re.sub(r"<svg\b", "<svg xmlns='http://www.w3.org/2000/svg'", svg_text, count=1)
-
-    return "<?xml version='1.0' encoding='UTF-8'?>\n" + svg_text
-
-
-def export_pdf_from_html(html_path):
-    tool = shutil.which("soffice") or shutil.which("libreoffice")
-    if not tool:
-        raise RuntimeError("Neither soffice nor libreoffice was found; cannot export PDF automatically.")
-
-    html_path = Path(html_path).resolve()
-    pdf_path = html_path.with_suffix(".pdf")
-    if pdf_path.exists():
-        pdf_path.unlink()
-
-    cmd = [
-        tool,
-        "--headless",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        str(html_path.parent),
-        str(html_path),
-    ]
-    result = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError("PDF export failed:\n{}".format(result.stdout))
-    if not pdf_path.exists():
-        raise RuntimeError("PDF export finished without creating {}".format(pdf_path))
-    return pdf_path
-
-
-def export_pdf_from_svg(svg_path):
-    tool = shutil.which("soffice") or shutil.which("libreoffice")
-    if not tool:
-        raise RuntimeError("Neither soffice nor libreoffice was found; cannot export PDF automatically.")
-
-    svg_path = Path(svg_path).resolve()
-    pdf_path = svg_path.with_suffix(".pdf")
-    if pdf_path.exists():
-        pdf_path.unlink()
-
-    cmd = [
-        tool,
-        "--headless",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        str(svg_path.parent),
-        str(svg_path),
-    ]
-    result = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError("PDF export from SVG failed:\n{}".format(result.stdout))
-    if not pdf_path.exists():
-        raise RuntimeError("PDF export finished without creating {}".format(pdf_path))
-    return pdf_path
-
-
-def write_output_bundle(out_path, html_text, write_svg=True, write_pdf=True):
-    out_path = Path(out_path)
-    out_path.write_text(html_text, encoding="utf-8")
-
-    svg_path = None
-    if write_svg:
-        svg_path = out_path.with_suffix(".svg")
-        svg_path.write_text(extract_svg_text(html_text), encoding="utf-8")
-
-    pdf_path = None
-    if write_pdf:
-        if svg_path is not None:
-            pdf_path = export_pdf_from_svg(svg_path)
-        else:
-            pdf_path = export_pdf_from_html(out_path)
-
-    return out_path, svg_path, pdf_path
+def write_output_bundle(out_path, html_doc, write_svg=True, write_pdf=True):
+    """Delegate to the shared rendering layer (see render_common)."""
+    return rc.write_output_bundle(out_path, html_doc, write_svg=write_svg, write_pdf=write_pdf)
 
 
 def main():
@@ -563,10 +433,10 @@ def main():
     grouped = {name: grouped[name] for name in sorted_names}
 
     protein_label = load_protein_label(args.protein, args.protein_fasta, args.final_tsv)
-    html_text = build_html(args.protein, protein_label, grouped)
+    html_doc = build_html(args.protein, protein_label, grouped)
     out_path, svg_path, pdf_path = write_output_bundle(
         args.out,
-        html_text,
+        html_doc,
         write_svg=not args.no_svg,
         write_pdf=not args.no_pdf,
     )

@@ -16,7 +16,7 @@ def load_visualizer_module(module_path):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Batch-generate blastn reference graphic summaries (HTML + SVG + PDF) from final_retained_candidates.tsv."
+        description="Batch-generate blastn reference graphic summaries (HTML + native vector PDF) from final_retained_candidates.tsv."
     )
     parser.add_argument(
         "--final-tsv",
@@ -58,7 +58,7 @@ def parse_args():
     parser.add_argument(
         "--no-svg",
         action="store_true",
-        help="Skip separate SVG export.",
+        help="Deprecated no-op kept for compatibility: standalone SVG output was replaced by native vector PDF.",
     )
     return parser.parse_args()
 

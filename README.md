@@ -48,7 +48,7 @@ Use a Unix-like shell with Bash and Python 3. Install the Python dependency in y
 python3 -m pip install -r requirements.txt
 ```
 
-`requirements.txt` currently specifies `biopython>=1.85`. Fresh discovery requires BLASTN, DIAMOND and HMMER (`hmmsearch`); read mapping also requires BWA and samtools. HTML/SVG plotting does not require LibreOffice; optional PDF export requires `soffice` or `libreoffice` and has not been validated end to end.
+`requirements.txt` currently specifies `biopython>=1.85`. Fresh discovery requires BLASTN, DIAMOND and HMMER (`hmmsearch`); read mapping also requires BWA and samtools. Plotting does not require LibreOffice: figures are self-contained HTML with an inline SVG, and PDF exports are generated natively as vector PDF by the shared rendering layer (no external converter).
 
 The discovery engine still defaults to development-machine executable paths. On another machine, explicitly set **absolute executable paths**, for example:
 
@@ -220,7 +220,7 @@ Each candidate receives the grade and reason below. All candidates, including co
 
 ### 10. Plot and validate outputs
 
-`--plots supported` plots grades A/B; `all` includes all grades; `none` skips plotting. Legacy modules produce nucleotide-reference and protein alignment HTML/SVG figures for applicable hits. A domain-only candidate may have no homolog alignment plot. `--pdf` requests LibreOffice conversion and may fail if the converter is unavailable. Plot selection changes visualization only, not the retained candidate table.
+`--plots supported` plots grades A/B; `all` includes all grades; `none` skips plotting. Legacy modules produce nucleotide-reference and protein alignment figures for applicable hits, each as self-contained HTML plus a native vector PDF, through a shared rendering layer (`legacy/render_common.py`). The report root also gains an `index.html` figure index listing every generated figure with links. A domain-only candidate may have no homolog alignment plot. `--pdf` controls whether PDF files are written (no external converter involved). Plot selection changes visualization only, not the retained candidate table.
 
 Reporting verifies unique candidate IDs, agreement with retained audit IDs, coverage IDs when available, candidate order/count preservation, group count totals, and presence of HTML when applicable plotting was requested. `validation.json` records required source-file hashes, VMR hash, thresholds and grading version. Wrapper failures are recorded as `failed` with an error; a populated directory alone is not evidence of successful completion.
 
@@ -299,7 +299,7 @@ bash -n screen_virus_res.sh
 "${PYTHON_BIN:-python3}" -m unittest test_grading.py
 ```
 
-Earlier development validation covered complete LGTZ/HZS candidate post-processing and HTML/SVG generation. It did not rerun upstream searches. Fresh assembly-to-report end-to-end execution, cross-machine portability and PDF export are not yet fully validated. This documentation/VMR update does not constitute a new full scientific regression run.
+Earlier development validation covered complete LGTZ/HZS candidate post-processing and HTML generation. It did not rerun upstream searches. Native vector PDF export and the figure index page were validated end to end on the HZS report rerun (39 figures, HTML + PDF each, matching the previous candidate counts). Fresh assembly-to-report end-to-end execution and cross-machine portability are not yet fully validated. This documentation/VMR update does not constitute a new full scientific regression run.
 
 Record assembly/read provenance, library preparation, tool versions and database releases for each study. Manifests record command arguments and selected hashes, but do not yet inventory every executable version and every discovery database hash. Existing-result mode does not comprehensively revalidate scientific equivalence of its resources.
 

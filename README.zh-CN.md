@@ -36,7 +36,7 @@ flowchart TD
 python3 -m pip install -r requirements.txt
 ```
 
-目前 Python 依赖为 `biopython>=1.85`。新发现流程需要 BLASTN、DIAMOND、HMMER 的 `hmmsearch`；回贴还需要 BWA 和 samtools。HTML/SVG 绘图不要求 LibreOffice；可选 PDF 导出需要 `soffice` 或 `libreoffice`，尚未完成端到端验证。
+目前 Python 依赖为 `biopython>=1.85`。新发现流程需要 BLASTN、DIAMOND、HMMER 的 `hmmsearch`；回贴还需要 BWA 和 samtools。绘图不依赖 LibreOffice：图形为自包含 HTML（内嵌 SVG），PDF 由公共渲染层（`legacy/render_common.py`）原生输出矢量 PDF，无需外部转换器。
 
 增强内核仍保留开发主机默认工具路径。换机器时需指定实际安装位置，例如：
 
@@ -204,7 +204,7 @@ VMR 注释按 accession、标准化名称及属/物种相关回退映射补充�
 
 ### 步骤 10：绘图与一致性验证
 
-`--plots supported` 绘制 A/B 级，`all` 包含所有等级，`none` 不绘图。对适用同源命中生成核酸参考和蛋白比对 HTML/SVG；仅结构域命中可能没有同源比对图。`--pdf` 调用 LibreOffice，可因转换器缺失而失败。绘图选择不改变候选保留范围。
+`--plots supported` 绘制 A/B 级，`all` 包含所有等级，`none` 不绘图。对适用同源命中生成核酸参考和蛋白比对图形，每张为自包含 HTML 加原生矢量 PDF，统一经公共渲染层（`legacy/render_common.py`）输出；报告根目录同时生成 `index.html` 图形索引，列出全部图形及链接。仅结构域命中可能没有同源比对图。`--pdf` 控制是否写出 PDF 文件（不依赖外部转换器）。绘图选择不改变候选保留范围。
 
 校验涵盖候选 ID 唯一性、审计保留 ID 一致性、可用覆盖表 ID、输出顺序与数量、分组计数总和，以及应绘图时 HTML 是否产生。`validation.json` 记录必需来源文件哈希、VMR 哈希、阈值和分级版本。失败会写入 `failed` 和错误信息；目录有文件不代表运行完成。
 
@@ -283,7 +283,7 @@ bash -n screen_virus_res.sh
 "${PYTHON_BIN:-python3}" -m unittest test_grading.py
 ```
 
-此前开发验证覆盖 LGTZ/HZS 完整候选后处理和 HTML/SVG 生成，没有重新执行上游搜索。新组装到报告的端到端执行、跨机器可移植性和 PDF 尚未完全验证。本次文档和 VMR 更新不代表重新完成了整套科研回归。
+此前开发验证覆盖 LGTZ/HZS 完整候选后处理和 HTML 生成，没有重新执行上游搜索。原生矢量 PDF 导出与图形索引页已在 HZS 报告复跑中端到端验证（39 张图，各含 HTML 与 PDF，候选计数与此前一致）。新组装到报告的端到端执行和跨机器可移植性尚未完全验证。本次文档和 VMR 更新不代表重新完成了整套科研回归。
 
 研究中应额外保存组装/reads 来源、建库方式、软件版本和数据库版本。manifest 已记录命令参数及部分哈希，但尚未完整记录所有工具版本和全部发现数据库哈希；已有结果模式也不全面核验各参考资源的科学等价性。
 

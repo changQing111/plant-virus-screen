@@ -6,11 +6,12 @@ ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT/'legacy'))
 import select_final_candidates as legacy
 import summarize_final_retained_viruses as summary
+import plot_index
 
 def read(p):
- with open(p) as f:return list(csv.DictReader(f,delimiter='\t'))
+ with open(p,encoding='utf-8') as f:return list(csv.DictReader(f,delimiter='\t'))
 def write(p,rows,fields):
- with open(p,'w',newline='') as f:
+ with open(p,'w',newline='',encoding='utf-8') as f:
   w=csv.DictWriter(f,fields,delimiter='\t',extrasaction='ignore');w.writeheader();w.writerows(rows)
 def sha(p):
  h=hashlib.sha256()
@@ -28,7 +29,7 @@ def build(src,out,vmr,ntf,aaf,plots,pdf,breadth,depth):
  required=['final_candidates.tsv','all_contigs_audit.tsv','blastn.tsv','blastx.tsv','competitive_annotated.tsv','domain_evidence.tsv','manifest.json']
  for n in required:
   if not (src/n).is_file():raise ValueError('Missing '+n)
- manifest=json.loads((src/'manifest.json').read_text())
+ manifest=json.loads((src/'manifest.json').read_text(encoding='utf-8'))
  if not isinstance(manifest,dict) or manifest.get('status')!='completed':raise ValueError('Invalid discovery manifest')
  rows=read(src/'final_candidates.tsv'); ids=[r['query_id'] for r in rows];idset=set(ids)
  if len(ids)!=len(idset):raise ValueError('Duplicate candidate IDs')
@@ -96,12 +97,14 @@ def build(src,out,vmr,ntf,aaf,plots,pdf,breadth,depth):
    if kind=='protein':cmd+=['--protein-fasta',str(aaf)]
    if not pdf:cmd+=['--no-pdf']
    with open(out/(kind+'_plots.log'),'w') as log:subprocess.run(cmd,stdout=log,stderr=subprocess.STDOUT,check=True)
- figures=list(out.rglob('*.html'))
+ figures=[p for p in out.rglob('*.html') if p.name!='index.html']
  if selected and any(r.get('best_nt_hit') or r.get('best_protein_hit') for r in selected) and not figures:raise ValueError('Plotting requested but no HTML figures generated')
+ if figures:plot_index.build_index(out)
+ pdfs=list(out.rglob('*.pdf'))
  counts=dict(Counter(r['evidence_grade'] for r in annotated));check=read(out/'annotated_candidates.tsv')
  assert [r['contig_id'] for r in check]==ids
  assert sum(g['contig_count'] for g in groups)==len(ids)
- validation={'status':'passed','input_candidates':len(ids),'output_candidates':len(check),'grade_counts':counts,'plot_candidates':len(selected),'html_figures':len(figures),'input_sha256':{n:sha(src/n) for n in required},'vmr_sha256':sha(vmr),'thresholds':{'mapq20_breadth_1x':breadth,'mapq20_mean_depth':depth},'grading_version':'0.1.0-heuristic'}
- (out/'validation.json').write_text(json.dumps(validation,indent=2))
- (out/'REPORT.md').write_text('# 病毒候选证据报告\n\n候选数：'+str(len(ids))+'。全部保留，无静默剔除。\n\n分级计数：'+json.dumps(counts)+'\n\nA：多类证据、病毒竞争最佳命中、回贴达到阈值；B：多类证据但验证不完整；C：单类或未解决证据；D：细胞来源竞争冲突。分级是启发式复核优先级，不是感染、物种或新病毒确认。\n\nICTV 注释复用传统 accession/name/genus 映射，宿主字段仅描述参考病毒。汇总按推断参考相关名称分组，组数不是病毒物种数。竞争证据当前只使用最高分分类，尚未完成区域级病毒/细胞分数竞争，高等级仍需人工复核。\n',encoding='utf-8')
+ validation={'status':'passed','input_candidates':len(ids),'output_candidates':len(check),'grade_counts':counts,'plot_candidates':len(selected),'html_figures':len(figures),'pdf_figures':len(pdfs),'input_sha256':{n:sha(src/n) for n in required},'vmr_sha256':sha(vmr),'thresholds':{'mapq20_breadth_1x':breadth,'mapq20_mean_depth':depth},'grading_version':'0.1.0-heuristic'}
+ (out/'validation.json').write_text(json.dumps(validation,indent=2),encoding='utf-8')
+ (out/'REPORT.md').write_text('# 病毒候选证据报告\n\n候选数：'+str(len(ids))+'。全部保留，无静默剔除。\n\n分级计数：'+json.dumps(counts)+'\n\nA：多类证据、病毒竞争最佳命中、回贴达到阈值；B：多类证据但验证不完整；C：单类或未解决证据；D：细胞来源竞争冲突。分级是启发式复核优先级，不是感染、物种或新病毒确认。\n\n图形摘要索引见 index.html；PDF 为矢量导出，缩放不失真。\n\nICTV 注释复用传统 accession/name/genus 映射，宿主字段仅描述参考病毒。汇总按推断参考相关名称分组，组数不是病毒物种数。竞争证据当前只使用最高分分类，尚未完成区域级病毒/细胞分数竞争，高等级仍需人工复核。\n',encoding='utf-8')
  return validation
