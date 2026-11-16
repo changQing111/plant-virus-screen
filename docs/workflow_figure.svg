@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="183mm" height="100.19mm" viewBox="0 0 518.74 284.00" font-family="Helvetica, Arial, sans-serif">
+  <rect id="bg" x="0" y="0" width="518.74" height="284.00" fill="#FFFFFF"/>
+  <defs>
+    <marker id="arrow-main" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="5.0" markerHeight="4.0" orient="auto">
+      <path d="M 0 0.6 L 7.5 3 L 0 5.4 z" fill="#1F2730"/>
+    </marker>
+    <marker id="arrow-dash" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="4.6" markerHeight="3.7" orient="auto">
+      <path d="M 0 0.6 L 7.5 3 L 0 5.4 z" fill="#5A6673"/>
+    </marker>
+    <marker id="arrow-rail" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="4.2" markerHeight="3.4" orient="auto">
+      <path d="M 0 0.8 L 7.2 3 L 0 5.2 z" fill="#6C7885"/>
+    </marker>
+  </defs>
+  <g id="c:inputs">
+    <rect x="9.00" y="18.00" width="84.00" height="146.00" rx="4.0" fill="none" stroke="#C2CBD4" stroke-width="0.70"/>
+    <text x="15.00" y="28.00" font-family="Helvetica, Arial, sans-serif" font-size="6.2" font-weight="bold" fill="#34404D">External inputs</text>
+  </g>
+  <g id="c:stage1">
+    <rect x="115.00" y="18.00" width="142.00" height="176.00" rx="4.0" fill="none" stroke="#C2CBD4" stroke-width="0.70"/>
+    <text x="121.00" y="28.00" font-family="Helvetica, Arial, sans-serif" font-size="6.2" font-weight="bold" fill="#34404D">1. Discovery &amp; union</text>
+  </g>
+  <g id="c:stage2">
+    <rect x="278.00" y="18.00" width="110.00" height="176.00" rx="4.0" fill="none" stroke="#C2CBD4" stroke-width="0.70"/>
+    <text x="284.00" y="28.00" font-family="Helvetica, Arial, sans-serif" font-size="6.2" font-weight="bold" fill="#34404D">2. Competition &amp; coverage</text>
+  </g>
+  <g id="c:stage3">
+    <rect x="408.00" y="18.00" width="105.74" height="176.00" rx="4.0" fill="none" stroke="#C2CBD4" stroke-width="0.70"/>
+    <text x="414.00" y="28.00" font-family="Helvetica, Arial, sans-serif" font-size="6.2" font-weight="bold" fill="#34404D">3. Annotation &amp; reporting</text>
+  </g>
+  <g id="n:assembly">
+    <rect x="13.00" y="33.00" width="76.00" height="28.00" rx="3.0" fill="#FFFFFF" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="51.00" y="40.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Full assembly FASTA</text>
+    <text x="51.00" y="49.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">Unique contig IDs;</text>
+    <text x="51.00" y="58.05" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">defines audit universe</text>
+  </g>
+  <g id="n:refs">
+    <rect x="13.00" y="67.00" width="76.00" height="52.00" rx="3.0" fill="#FFFFFF" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="51.00" y="82.75" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Reference resources</text>
+    <text x="51.00" y="91.75" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">Viral nt/prot DB,</text>
+    <text x="51.00" y="99.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">competitive DB + tax map,</text>
+    <text x="51.00" y="108.15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">Pfam-A HMM, ICTV VMR</text>
+  </g>
+  <g id="n:reads">
+    <rect x="13.00" y="125.00" width="76.00" height="30.00" rx="3.0" fill="#FFFFFF" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="51.00" y="137.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Paired reads (optional)</text>
+    <text x="51.00" y="146.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">Clean R1 / R2 FASTQ</text>
+  </g>
+  <g id="n:existing_results">
+    <rect x="13.00" y="217.00" width="76.00" height="39.00" rx="3.0" fill="#F1F3F6" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="51.00" y="226.25" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Existing results</text>
+    <text x="51.00" y="235.25" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">--existing-results</text>
+    <text x="51.00" y="243.45" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">Skip discovery &amp; mapping;</text>
+    <text x="51.00" y="251.65" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">preserve source policy</text>
+  </g>
+  <g id="n:blastn">
+    <rect x="120.00" y="33.00" width="124.00" height="24.00" rx="3.0" fill="#F1F3F6" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="182.00" y="42.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">BLASTN -&gt; nt</text>
+    <text x="182.00" y="51.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">≥300 nt, E ≤ 1e-10, bits ≥ 200</text>
+  </g>
+  <g id="n:blastx">
+    <rect x="120.00" y="62.00" width="124.00" height="24.00" rx="3.0" fill="#F1F3F6" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="182.00" y="71.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">DIAMOND BLASTX -&gt; protein</text>
+    <text x="182.00" y="80.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">≥100 aa, E ≤ 1e-5, bits ≥ 80</text>
+  </g>
+  <g id="n:rdrp_hmm">
+    <rect x="120.00" y="91.00" width="124.00" height="38.00" rx="3.0" fill="#0F4D92" stroke="#0B3A70" stroke-width="0.85"/>
+    <text x="182.00" y="103.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#FFFFFF">6-frame ORFs + curated RdRp HMM</text>
+    <text x="182.00" y="112.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">ORFs ≥80 aa; 6 Pfam models (curated_core_v1)</text>
+    <text x="182.00" y="121.05" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">-&gt; RdRP_domain: E ≤ 1e-5, cov ≥ 0.25</text>
+  </g>
+  <g id="n:union">
+    <rect x="120.00" y="154.00" width="124.00" height="33.00" rx="3.0" fill="#F1F3F6" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="182.00" y="164.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Candidate union</text>
+    <text x="182.00" y="173.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">Any category retains contig;</text>
+    <text x="182.00" y="181.55" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">all contigs enter audit</text>
+  </g>
+  <g id="n:regional_comp">
+    <rect x="284.00" y="33.00" width="98.00" height="66.00" rx="3.0" fill="#0F4D92" stroke="#0B3A70" stroke-width="0.85"/>
+    <text x="333.00" y="47.55" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#FFFFFF">Regional competition</text>
+    <text x="333.00" y="56.55" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">Policy: regional_v1</text>
+    <text x="333.00" y="64.75" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">Same-strand overlap ≥0.5,</text>
+    <text x="333.00" y="72.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">margin &gt;0.10 (viral vs cell)</text>
+    <text x="333.00" y="81.15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">-&gt; viral / cellular / mixed /</text>
+    <text x="333.00" y="89.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">ambiguous / unclassified / no_hit</text>
+  </g>
+  <g id="n:read_mapping">
+    <rect x="284.00" y="120.00" width="98.00" height="48.00" rx="3.0" fill="#FFFFFF" stroke="#5A6673" stroke-width="0.80" stroke-dasharray="3.2 2.2"/>
+    <text x="333.00" y="133.75" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Read mapping (optional)</text>
+    <text x="333.00" y="142.75" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">BWA-MEM to full assembly</text>
+    <text x="333.00" y="150.95" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">samtools depth -s (-Q 0 / -Q 20)</text>
+    <text x="333.00" y="159.15" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">MAPQ≥20 breadth ≥1x, mean depth</text>
+  </g>
+  <g id="n:annotation">
+    <rect x="413.00" y="33.00" width="95.74" height="31.00" rx="3.0" fill="#F1F3F6" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="460.87" y="42.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Ref. + ICTV VMR annotation</text>
+    <text x="460.87" y="51.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">nt/prot concordance; genome</text>
+    <text x="460.87" y="59.55" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">comp., Baltimore, host_source</text>
+  </g>
+  <g id="n:grades">
+    <rect x="413.00" y="72.00" width="95.74" height="31.00" rx="3.0" fill="#F1F3F6" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="460.87" y="81.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">A–D evidence grades</text>
+    <text x="460.87" y="90.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">D overrides; A requires nt +</text>
+    <text x="460.87" y="98.55" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">viral + MAPQ≥20 thresholds</text>
+  </g>
+  <g id="n:priority">
+    <rect x="413.00" y="111.00" width="95.74" height="32.00" rx="3.0" fill="#0F4D92" stroke="#0B3A70" stroke-width="0.85"/>
+    <text x="460.87" y="120.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#FFFFFF">Discovery priority</text>
+    <text x="460.87" y="129.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">review_conflict / novelty_review_high</text>
+    <text x="460.87" y="138.05" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#DCE8F5">/ pending_mapping / homology_review</text>
+  </g>
+  <g id="n:plots_validation">
+    <rect x="413.00" y="155.00" width="95.74" height="33.00" rx="3.0" fill="#F1F3F6" stroke="#7A8694" stroke-width="0.75"/>
+    <text x="460.87" y="165.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Plots + validation</text>
+    <text x="460.87" y="174.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">nt / protein / coverage plots, summary,</text>
+    <text x="460.87" y="182.55" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">composition, index.html, validation.json</text>
+  </g>
+  <g id="n:assembly_diag">
+    <rect x="284.00" y="217.00" width="98.00" height="39.00" rx="3.0" fill="#FFFFFF" stroke="#5A6673" stroke-width="0.80" stroke-dasharray="3.2 2.2"/>
+    <text x="333.00" y="230.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Assembly diagnostics</text>
+    <text x="333.00" y="239.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">validate_candidates.py assembly</text>
+    <text x="333.00" y="247.55" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">BAM depth -s, ≥5x, zero-run, soft-clip</text>
+  </g>
+  <g id="n:gene_tree">
+    <rect x="413.00" y="217.00" width="95.74" height="39.00" rx="3.0" fill="#FFFFFF" stroke="#5A6673" stroke-width="0.80" stroke-dasharray="3.2 2.2"/>
+    <text x="460.87" y="230.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="6.10" font-weight="bold" fill="#1D242B">Gene tree (per marker)</text>
+    <text x="460.87" y="239.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">validate_candidates.py phylogeny</text>
+    <text x="460.87" y="247.55" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.10" fill="#4A5562">Curated homologs + MAFFT + IQ-TREE</text>
+  </g>
+  <g id="e:inputs-bus">
+    <path d="M 89 47 L 105 47 L 105 110 M 89 90 L 105 90" fill="none" stroke="#1F2730" stroke-width="1.10" stroke-linejoin="round"/>
+  </g>
+  <g id="e:to-blastn">
+    <path d="M 105 45 L 118 45" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:to-blastx">
+    <path d="M 105 74 L 118 74" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:to-hmm">
+    <path d="M 105 110 L 118 110" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:refs-top-rail">
+    <path d="M 13 90 L 4 90 L 4 10.5 L 501 10.5" fill="none" stroke="#6C7885" stroke-width="0.72" stroke-linejoin="round"/>
+    <text x="258.00" y="7.30" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.1" fill="#4A5562">competitive DB + tax map (Stage 2)  |  ICTV VMR + reference FASTAs (Stage 3)</text>
+  </g>
+  <g id="e:rail-to-comp">
+    <path d="M 372 10.5 L 372 31" fill="none" stroke="#6C7885" stroke-width="0.72" marker-end="url(#arrow-rail)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:rail-to-annot">
+    <path d="M 501 10.5 L 501 31" fill="none" stroke="#6C7885" stroke-width="0.72" marker-end="url(#arrow-rail)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:arms-collect">
+    <path d="M 244 45 L 250 45 L 250 140 L 182 140 M 244 74 L 250 74 M 244 110 L 250 110" fill="none" stroke="#1F2730" stroke-width="1.10" stroke-linejoin="round"/>
+  </g>
+  <g id="e:arms-to-union">
+    <path d="M 182 140 L 182 152" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:union-to-comp">
+    <path d="M 244 170 L 268 170 L 268 66 L 282 66" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:union-to-map">
+    <path d="M 268 136 L 282 136" fill="none" stroke="#5A6673" stroke-width="0.85" stroke-dasharray="3.2 2.1" marker-end="url(#arrow-dash)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:reads-to-map">
+    <path d="M 51 155 L 51 207 L 273 207 L 273 150 L 282 150" fill="none" stroke="#5A6673" stroke-width="0.85" stroke-dasharray="3.2 2.1" marker-end="url(#arrow-dash)" stroke-linejoin="round"/>
+    <text x="165.00" y="203.20" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.1" fill="#4A5562">if paired reads supplied</text>
+  </g>
+  <g id="e:comp-to-annot">
+    <path d="M 382 66 L 395 66 L 395 48 L 411 48" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:map-to-grades-prio">
+    <path d="M 382 136 L 394 136 L 394 93 L 411 93 M 394 127 L 411 127" fill="none" stroke="#5A6673" stroke-width="0.85" stroke-dasharray="3.2 2.1" marker-end="url(#arrow-dash)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:annot-to-grades">
+    <path d="M 461 64 L 461 70" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:grades-to-prio">
+    <path d="M 461 103 L 461 109" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:prio-to-plots">
+    <path d="M 461 143 L 461 153" fill="none" stroke="#1F2730" stroke-width="1.10" marker-end="url(#arrow-main)" stroke-linejoin="round"/>
+  </g>
+  <g id="e:existing-bypass">
+    <path d="M 89 236 L 104 236 L 104 267 L 402 267 L 402 56 L 411 56" fill="none" stroke="#5A6673" stroke-width="0.85" stroke-dasharray="3.2 2.1" marker-end="url(#arrow-dash)" stroke-linejoin="round"/>
+    <text x="244.00" y="263.40" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.1" fill="#4A5562">bypass discovery (completed results -&gt; Stage 3)</text>
+  </g>
+  <g id="e:map-to-diag">
+    <path d="M 333 168 L 333 215" fill="none" stroke="#5A6673" stroke-width="0.85" stroke-dasharray="3.2 2.1" marker-end="url(#arrow-dash)" stroke-linejoin="round"/>
+    <text x="337.00" y="187.00" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="5.1" fill="#4A5562">mapping.bam</text>
+  </g>
+  <g id="e:report-to-tree">
+    <path d="M 461 188 L 461 215" fill="none" stroke="#5A6673" stroke-width="0.85" stroke-dasharray="3.2 2.1" marker-end="url(#arrow-dash)" stroke-linejoin="round"/>
+    <text x="465.00" y="205.00" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="5.1" fill="#4A5562">curated candidates</text>
+  </g>
+  <g id="s:step1">
+    <circle cx="105.00" cy="33.00" r="4.4" fill="#0F4D92"/>
+    <text x="105.00" y="34.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.5" font-weight="bold" fill="#FFFFFF">1</text>
+  </g>
+  <g id="s:step2">
+    <circle cx="171.00" cy="147.00" r="4.4" fill="#0F4D92"/>
+    <text x="171.00" y="148.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.5" font-weight="bold" fill="#FFFFFF">2</text>
+  </g>
+  <g id="s:step3">
+    <circle cx="268.00" cy="54.00" r="4.4" fill="#0F4D92"/>
+    <text x="268.00" y="55.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.5" font-weight="bold" fill="#FFFFFF">3</text>
+  </g>
+  <g id="s:step4">
+    <circle cx="395.00" cy="36.00" r="4.4" fill="#0F4D92"/>
+    <text x="395.00" y="37.85" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.5" font-weight="bold" fill="#FFFFFF">4</text>
+  </g>
+  <g id="s:step5">
+    <circle cx="450.00" cy="148.50" r="4.4" fill="#0F4D92"/>
+    <text x="450.00" y="150.35" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="5.5" font-weight="bold" fill="#FFFFFF">5</text>
+  </g>
+  <text id="k:footer" x="9.00" y="280.00" font-family="Helvetica, Arial, sans-serif" font-size="5.1" fill="#4A5562">Solid edges: mandatory workflow steps (1–5). Dashed boxes/edges: optional modules or --existing-results bypass. Deep navy: new policy components (curated_core_v1, regional_v1, discovery_priority).</text>
+</svg>

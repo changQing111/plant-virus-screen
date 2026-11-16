@@ -9,3 +9,6 @@ validation*/
 *.dmnd
 *.hmm
 taxonomy_data/
+nrerun_HZS_LGTZ.shnrerun_HZS_LGTZ.slurmn
+rerun_HZS_LGTZ.sh
+rerun_HZS_LGTZ.slurm

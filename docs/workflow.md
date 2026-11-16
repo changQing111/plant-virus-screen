@@ -1,23 +1,44 @@
 # Workflow diagram
 
-The arrows show evidence and data dependencies, not concurrent execution. Read cleaning and transcriptome assembly occur upstream. All candidates are retained, including cellular-best conflicts.
+![plant-virus-screen workflow](workflow_figure.png)
+
+Editable vector files: [workflow_figure.svg](workflow_figure.svg) · [workflow_figure.pdf](workflow_figure.pdf).
+
+Read cleaning, transcriptome assembly and representative clustering occur upstream.
+Arrows show data dependencies, not concurrent execution. All candidates remain
+retained, including source conflicts.
 
 ```mermaid
 flowchart TD
-    A["Assembly FASTA + optional reads"]
-    B["Discover & merge candidates<br/>BLASTN · DIAMOND · RdRp HMM"]
-    C["Evaluate evidence<br/>Competitive search + optional read mapping"]
-    D["Annotate & grade<br/>ICTV VMR + evidence grades A–D"]
-    E["Validate & report<br/>Candidate tables · summaries · plots"]
-    R["Existing enhanced results"]
+    A["Full assembly + optional paired reads"]
+    B["Candidate union: BLASTN / DIAMOND / curated RdRp HMM"]
+    C["Regional competition + optional full-assembly read mapping"]
+    D["VMR annotation + A-D grades + discovery priority"]
+    E["Validated report + plots"]
+    R["Completed existing results: preserve source policy"]
+    F["Optional assembly diagnostics: mapping BAM"]
+    G["Optional gene tree: curated homologs + MAFFT + IQ-TREE"]
     A --> B --> C --> D --> E
     R -.-> D
-    classDef input fill:#e8f1fb,stroke:#3974a8,color:#173652;
-    classDef process fill:#e8f5ef,stroke:#378268,color:#173e30;
-    classDef result fill:#eee9fa,stroke:#8063b2,color:#3e2d60;
-    class A,R input;
-    class B,C,D process;
-    class E result;
+    C -.-> F
+    E -.-> G
 ```
 
-Detailed thresholds and grade rules are documented in the README. D takes precedence over A/B/C. The evidence categories are not statistically independent. Plot selection never removes candidates from the report. Existing-result mode bypasses discovery and mapping; it uses the evidence already present in the completed source run. HMM profiles are selected by RNA-polymerase keywords and do not comprehensively cover all virus groups.
+Fresh discovery uses accession/name-matched `curated_core_v1` HMM profiles and
+same-strand interval competition (`regional_v1`), not global best-hit assignment.
+The six-model panel is incomplete. See [English README](../README.md) or
+[中文说明](../README.zh-CN.md) for exact models, overlap/score rules and limitations.
+
+A–D grades and `discovery_priority` are distinct. Grade D applies to a cellular
+summary; `review_conflict` additionally covers mixed/ambiguous regional evidence.
+Novelty-review candidates need no nt hit, but priority does not establish novelty
+or resolve unclassified competition. The evidence types are not independent.
+
+Existing-result mode skips discovery and mapping and preserves the source
+competition policy; it does not apply the new HMM panel retrospectively.
+Default supported plotting includes A/B and novelty-review candidates.
+Plot selection never changes candidate retention.
+
+Assembly diagnostics and homolog-specific gene trees are optional separate
+outputs, not automatic report-grade upgrades. Gene trees require manually curated
+homologs and references; they do not confirm species or plant infection.
