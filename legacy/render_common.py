@@ -186,8 +186,15 @@ def text_width(s, size, bold=False):
 
 
 # ---------------------------------------------------------------------------
-# Color helpers
+# Color & text layout helpers (Nature-figure sequential palette & wrapping)
 # ---------------------------------------------------------------------------
+
+_NATURE_IDENTITY_STOPS = (
+    (0.00, (156, 202, 214)),  # #9CCAD6 soft ice-teal (high luminance)
+    (0.35, (66, 148, 158)),   # #42949E Nature muted teal
+    (0.70, (55, 117, 186)),   # #3775BA Nature secondary blue
+    (1.00, (15, 77, 146)),    # #0F4D92 Nature primary deep navy (low luminance)
+)
 
 
 def hex_to_rgb01(color):
@@ -201,18 +208,70 @@ def hex_to_rgb01(color):
 
 
 def pident_to_color(pident, low, high):
-    """Map an identity percentage onto the shared blue->red ramp."""
+    """Map an identity percentage onto a colorblind-safe Nature sequential ramp.
+
+    Uses a monotonically darkening ice-teal -> teal -> blue -> deep-navy ramp
+    so both colour and grayscale print preserve the exact identity ordering.
+    """
     if high <= low:
         ratio = 0.5
     else:
         ratio = (pident - low) / (high - low)
-    ratio = max(0.0, min(1.0, ratio))
-    # Low identity stays blue/cyan, high identity shifts to red.
-    hue = (220.0 - 220.0 * ratio) / 360.0
-    saturation = 0.78
-    lightness = 0.50
-    r, g, b = colorsys.hls_to_rgb(hue, lightness, saturation)
-    return "#{:02X}{:02X}{:02X}".format(int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
+    ratio = max(0.0, min(1.0, float(ratio)))
+    for idx in range(len(_NATURE_IDENTITY_STOPS) - 1):
+        t0, rgb0 = _NATURE_IDENTITY_STOPS[idx]
+        t1, rgb1 = _NATURE_IDENTITY_STOPS[idx + 1]
+        if ratio <= t1 or idx == len(_NATURE_IDENTITY_STOPS) - 2:
+            span = max(1e-9, t1 - t0)
+            local = max(0.0, min(1.0, (ratio - t0) / span))
+            r = int(round(rgb0[0] + (rgb1[0] - rgb0[0]) * local))
+            g = int(round(rgb0[1] + (rgb1[1] - rgb0[1]) * local))
+            b = int(round(rgb0[2] + (rgb1[2] - rgb0[2]) * local))
+            return "#{:02X}{:02X}{:02X}".format(r, g, b)
+    r, g, b = _NATURE_IDENTITY_STOPS[-1][1]
+    return "#{:02X}{:02X}{:02X}".format(r, g, b)
+
+
+def wrap_text(text, max_width, size=11, bold=False):
+    """Wrap text to fit within ``max_width`` figure px using Helvetica/CJK metrics."""
+    lines = []
+    remaining = str(text or "").strip()
+    max_width = max(24.0, float(max_width))
+    while remaining:
+        if text_width(remaining, size, bold=bold) <= max_width:
+            lines.append(remaining)
+            break
+        cut = 1
+        while cut < len(remaining) and text_width(remaining[: cut + 1], size, bold=bold) <= max_width:
+            cut += 1
+        break_pos = -1
+        for sep in (" ", "|", "_", "-", "/", ","):
+            pos = remaining.rfind(sep, 0, cut + 1)
+            if pos > cut // 2:
+                break_pos = pos + (0 if sep == " " else 1)
+                break
+        if break_pos > 0:
+            cut = break_pos
+        lines.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+    return lines or [""]
+
+
+def assign_text_lanes(entries, pad_px=10.0):
+    """Greedy interval-packing of horizontal spans ``[span_left, span_right]`` into lanes."""
+    lane_last_end = []
+    for entry in entries:
+        placed = False
+        for lane_index, last_end in enumerate(lane_last_end):
+            if entry["span_left"] > last_end + pad_px:
+                entry["lane"] = lane_index
+                lane_last_end[lane_index] = entry["span_right"]
+                placed = True
+                break
+        if not placed:
+            entry["lane"] = len(lane_last_end)
+            lane_last_end.append(entry["span_right"])
+    return len(lane_last_end)
 
 
 def observed_identity_range(grouped_hits):
@@ -365,7 +424,9 @@ def render_svg(fig):
     parts = []
     parts.append(
         "<svg width='{w}' height='{h}' viewBox='0 0 {w} {h}' xmlns='http://www.w3.org/2000/svg' "
-        "style='border:1px solid #d0d0d0;background:#fafafa;'>".format(w=_fmt(fig.width), h=_fmt(fig.height))
+        "font-family='Arial,Helvetica,sans-serif' style='background:#ffffff;'>".format(
+            w=_fmt(fig.width), h=_fmt(fig.height)
+        )
     )
     if gradient_ops:
         parts.append("<defs>")
@@ -505,12 +566,9 @@ def render_pdf_stream(fig, cjk_mode="ucs2"):
     height = fig.height
     out = []
     out.append("q")
-    # Background and border to match the SVG look.
-    out.append("{} rg".format(_col("#fafafa")))
+    # Pure white publication canvas (no outer decorative box border).
+    out.append("{} rg".format(_col("#ffffff")))
     out.append("0 0 {w:.2f} {h:.2f} re f".format(w=fig.width * k, h=height * k))
-    out.append("{} RG".format(_col("#d0d0d0")))
-    out.append("0.50 w")
-    out.append("0 0 {w:.2f} {h:.2f} re S".format(w=fig.width * k, h=height * k))
     for op in fig.ops:
         kind = op["op"]
         if kind == "text":

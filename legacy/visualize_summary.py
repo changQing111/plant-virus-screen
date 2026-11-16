@@ -148,147 +148,181 @@ def _grade_hint(grade):
     }.get(grade, "")
 
 
+def _wrap_text(text, width, size=11):
+    """Wrap by rendered width, including unbroken IDs; retain every character."""
+    lines = []
+    remaining = str(text).strip()
+    while remaining:
+        if rc.text_width(remaining, size) <= width:
+            lines.append(remaining)
+            break
+        cut = 1
+        while cut < len(remaining) and rc.text_width(remaining[:cut + 1], size) <= width:
+            cut += 1
+        space = remaining.rfind(" ", 0, cut + 1)
+        if space > cut // 2:
+            cut = space
+        lines.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+    return lines or [""]
+
+
 def _panel_group_stack(fig, groups, top_y, max_rows, x_left, x_right):
-    label_style = {"size": 11, "fill": "#222222"}
     small_style = {"size": 10, "fill": "#555555"}
-
-    fig.text(24, top_y - 10, "Top reference-related groups by contig count (grade composition)", bold=True, **{"size": 13, "fill": "#222222"})
-
-    ordered = sorted(groups, key=lambda g: int(float(g.get("contig_count") or 0)), reverse=True)
-    ordered = ordered[:max_rows]
+    fig.text(24, top_y - 10, "Top reference-related groups by contig count (grade composition)",
+             size=13, fill="#222222", bold=True)
+    ordered = sorted(groups, key=lambda g: int(float(g.get("contig_count") or 0)), reverse=True)[:max_rows]
     if not ordered:
         fig.text(24, top_y + 20, "No reference-related groups available.", **small_style)
         return top_y + 40
 
-    bar_x0 = x_left + 40
-    bar_x1 = x_right
+    # Independent label, bar and count columns; widths use the rendering metrics.
+    bar_x0 = max(x_left + 410, 440)
+    bar_x1 = x_right - 55
     max_count = max(int(float(g["contig_count"])) for g in ordered) or 1
-    row_h = 24
-    legend_y = top_y + 12
+    legend_y = top_y + 14
     for index, grade in enumerate(GRADE_ORDER):
-        lx = bar_x1 - 460 + index * 115
+        lx = bar_x0 + index * 90
         fig.rect(lx, legend_y - 8, 10, 10, fill=GRADE_COLOR[grade])
-        fig.text(lx + 14, legend_y, GRADE_SHORT[grade], **small_style)
-
-    y = legend_y + 18
+        fig.text(lx + 15, legend_y, GRADE_SHORT[grade], **small_style)
+    fig.text(bar_x1 + 10, legend_y, "Contigs", **small_style)
+    y = legend_y + 26
     for group in ordered:
-        name = _truncate((group.get("reference_related_group") or "").strip(), 52)
+        name = (group.get("reference_related_group") or "").strip()
+        lines = _wrap_text(name, bar_x0 - x_left - 24)
+        row_h = max(30, len(lines) * 15 + 12)
+        center = y + row_h / 2
+        first_baseline = center - (len(lines) - 1) * 7.5 + 4
+        for i, line in enumerate(lines):
+            fig.text(x_left, first_baseline + 15 * i, line, size=11, fill="#222222", title=name)
         count = int(float(group["contig_count"]))
-        grade_counts = {}
         try:
             grade_counts = json.loads(group.get("grade_counts") or "{}")
         except ValueError:
             grade_counts = {}
-        fig.text(x_left, y + 6, name, **label_style)
         total_w = (bar_x1 - bar_x0) * (count / float(max_count))
         x_cursor = bar_x0
         for grade in GRADE_ORDER:
             part = int(grade_counts.get(grade, 0) or 0)
-            if part <= 0:
+            if part <= 0 or count <= 0:
                 continue
-            part_w = total_w * (part / float(count))
-            fig.rect(x_cursor, y - 6, part_w, 12, fill=GRADE_COLOR[grade])
+            part_w = total_w * part / count
+            fig.rect(x_cursor, center - 6, part_w, 12, fill=GRADE_COLOR[grade],
+                     title="{} | {}: {}".format(name, GRADE_SHORT[grade], part))
             x_cursor += part_w
-        fig.text(min(bar_x1 + 8, x_cursor + 6), y + 4, str(count), **small_style)
+        fig.text(bar_x1 + 10, center + 4, str(count), **small_style)
         y += row_h
     return y
 
 
 def _panel_coverage_scatter(fig, rows, top_y, base_y, x_left, x_right, breadth_threshold, depth_threshold):
-    label_style = {"size": 12, "fill": "#222222"}
     axis_style = {"size": 11, "fill": "#555555"}
     small_style = {"size": 10, "fill": "#555555"}
-
-    fig.text(24, top_y - 10, "Coverage overview (MAPQ>=20): mean depth vs breadth>=1x, A/B/C candidates", bold=True, **{"size": 13, "fill": "#222222"})
-
+    fig.text(24, top_y - 10, "Coverage overview (MAPQ>=20): mean depth vs breadth>=1x, A/B/C candidates",
+             size=13, fill="#222222", bold=True)
     points = []
     for row in rows:
         grade = (row.get("evidence_grade") or "").strip()
-        if grade not in ("A_supported", "B_supported", "C_provisional"):
+        if grade not in GRADE_ORDER[:3]:
             continue
         try:
             mean_depth = float(row.get("mapq20_mean_depth") or "")
             breadth = float(row.get("mapq20_breadth_1x") or "")
         except ValueError:
             continue
+        if not (math.isfinite(mean_depth) and math.isfinite(breadth) and mean_depth >= 0 and 0 <= breadth <= 1):
+            continue
         points.append((row.get("contig_id") or "", grade, mean_depth, breadth))
-
     if not points:
-        fig.text(24, top_y + 20, "No MAPQ>=20 coverage data for A/B/C candidates; panel skipped.", **small_style)
-        return
+        fig.text(24, top_y + 20, "No valid MAPQ>=20 coverage data for A/B/C candidates; panel skipped.", **small_style)
+        return top_y + 50
 
-    plot_h = base_y - (top_y + 16)
-    x0 = x_left + 40
-    x1 = x_right
+    x0, x1 = max(x_left + 80, 105), x_right - 40
+    plot_top = top_y + 70
+    plot_h = base_y - plot_top
     max_depth = max([p[2] for p in points] + [depth_threshold, 1.0])
-    log_x_max = _log10(max_depth + 1.0) or 1.0
-
+    # Add headroom so breadth=1 and maximum-depth points remain inside the axes.
+    log_x_max = _log10(max_depth + 1.0) * 1.04 or 1.0
     def x_of(depth):
         return x0 + (_log10(depth + 1.0) / log_x_max) * (x1 - x0)
-
     def y_of(breadth):
-        return base_y - max(0.0, min(1.0, breadth)) * plot_h
+        return base_y - (breadth + 0.025) / 1.05 * plot_h
 
-    fig.rect(x0, top_y + 16, x1 - x0, plot_h, fill="#fcfcfc", stroke="#d0d0d0", stroke_width=1.0)
-
-    # Threshold lines (report mapping criteria).
-    if 0.0 < breadth_threshold < 1.0:
+    legend_y = top_y + 15
+    for index, grade in enumerate(GRADE_ORDER[:3]):
+        lx = x0 + index * 90
+        fig.circle(lx, legend_y - 3, 5, fill=GRADE_COLOR[grade])
+        fig.text(lx + 12, legend_y, GRADE_SHORT[grade], **small_style)
+    fig.text(x0 + 310, legend_y,
+             "Dashed thresholds: breadth {:.2f}; mean depth {}".format(breadth_threshold, _fmt_count(depth_threshold)), **small_style)
+    fig.text(x0, top_y + 47, "Breadth >=1x (MAPQ>=20)", **axis_style)
+    fig.rect(x0, plot_top, x1 - x0, plot_h, fill="#fcfcfc", stroke="#d0d0d0", stroke_width=1)
+    if 0 <= breadth_threshold <= 1:
         y_th = y_of(breadth_threshold)
-        fig.polyline([(x0, y_th), (x1, y_th)], stroke="#d85a30", stroke_width=1.0, dash=(6, 4))
-        fig.text(x1 + 6, y_th + 4, "breadth {:.2f}".format(breadth_threshold), **small_style)
+        fig.polyline([(x0, y_th), (x1, y_th)], stroke="#d85a30", stroke_width=1, dash=(6, 4))
     x_th = x_of(depth_threshold)
     if x0 < x_th < x1:
-        fig.polyline([(x_th, top_y + 16), (x_th, base_y)], stroke="#d85a30", stroke_width=1.0, dash=(6, 4))
-        fig.text(x_th + 4, top_y + 30, "depth {}".format(_fmt_count(depth_threshold)), **small_style)
-
-    # Axis ticks: x powers of ten on the log scale, y quarters.
+        fig.polyline([(x_th, plot_top), (x_th, base_y)], stroke="#d85a30", stroke_width=1, dash=(6, 4))
+    # Coordinates use log10(depth+1); labels show actual depth, including zero.
+    ticks = [0.0]
     exponent = 0
     while 10 ** exponent <= max_depth:
-        tick_x = x_of(10 ** exponent - 1.0)
-        if tick_x <= x1:
-            fig.text(tick_x, base_y + 18, _fmt_count(10 ** exponent), anchor="middle", **axis_style)
-        exponent += 1
-    fig.text((x0 + x1) / 2.0, base_y + 38, "mean depth (MAPQ>=20, log scale)", anchor="middle", **axis_style)
+        ticks.append(float(10 ** exponent)); exponent += 1
+    last_right = -math.inf
+    for depth in ticks:
+        px = x_of(depth); label = _fmt_count(int(depth))
+        half = rc.text_width(label, 11) / 2
+        if px - half > last_right + 12:
+            fig.text(px, base_y + 22, label, anchor="middle", **axis_style)
+            last_right = px + half
+    fig.text((x0 + x1) / 2, base_y + 44, "Mean depth (MAPQ>=20; log10(depth + 1) spacing)", anchor="middle", **axis_style)
     for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
-        fig.text(x0 - 10, y_of(frac) + 4, "{:.2f}".format(frac), anchor="end", **axis_style)
-    fig.text(x0 - 56, top_y + 26, "breadth >=1x", **axis_style)
+        fig.text(x0 - 12, y_of(frac) + 4, "{:.2f}".format(frac), anchor="end", **axis_style)
 
-    for contig, grade, mean_depth, breadth in points:
-        color = GRADE_COLOR[grade]
-        px = x_of(mean_depth)
-        py = y_of(breadth)
-        fig.circle(px, py, 5, fill=color, title="{} | {} | depth {:.1f} | breadth {:.3f}".format(contig, grade, mean_depth, breadth))
-        if grade == "A_supported":
-            fig.text(px + 8, py + 4, _short_contig_label(contig), **{"size": 9, "fill": "#333333"})
-
-    # Legend inside the plot, top-right.
-    legend_x = x1 - 300
-    legend_y = top_y + 40
-    for index, grade in enumerate(["A_supported", "B_supported", "C_provisional"]):
-        fig.circle(legend_x + index * 95, legend_y, 5, fill=GRADE_COLOR[grade])
-        fig.text(legend_x + index * 95 + 10, legend_y + 4, GRADE_SHORT[grade], **small_style)
-    fig.text(x0 + 8, top_y + 16 + plot_h - 10, "Dashed lines mark the report mapping thresholds; grade A additionally requires multi-source viral evidence.", **small_style)
+    # Dense scatter: draw C then B then A; full IDs remain in SVG tooltips.
+    for contig, grade, mean_depth, breadth in sorted(points, key=lambda p: GRADE_ORDER.index(p[1]), reverse=True):
+        fig.circle(x_of(mean_depth), y_of(breadth), 4, fill=GRADE_COLOR[grade],
+                   title="{} | {} | depth {:.2f} | breadth {:.4f}".format(contig, grade, mean_depth, breadth))
+    y = base_y + 70
+    fig.text(24, y, "All A/B/C points are retained. Hover over points in HTML for IDs and metrics; grade A candidates are listed below.", **small_style)
+    y += 26
+    supported = [p for p in points if p[1] == "A_supported"]
+    if supported:
+        fig.text(24, y, "Grade A candidate details (not point annotations)", size=11, bold=True)
+        y += 22
+        fig.text(24, y, "Contig ID", **small_style)
+        fig.text(1100, y, "Mean depth", anchor="end", **small_style)
+        fig.text(1300, y, "Breadth >=1x", anchor="end", **small_style)
+        y += 20
+        for contig, grade, mean_depth, breadth in sorted(supported):
+            lines = _wrap_text(contig, 970, 10)
+            for i, line in enumerate(lines):
+                fig.text(24, y + i * 14, line, **small_style)
+            fig.text(1100, y, "{:.2f}".format(mean_depth), anchor="end", **small_style)
+            fig.text(1300, y, "{:.4f}".format(breadth), anchor="end", **small_style)
+            y += max(20, len(lines) * 14 + 6)
+    return y + 16
 
 
 def _panel_glossary(fig, top_y, breadth_threshold, depth_threshold):
-    """Bilingual glossary block at the bottom of the dashboard."""
-    fig.text(24, top_y, "Glossary 术语表", bold=True, **{"size": 13, "fill": "#222222"})
+    fig.text(24, top_y, "Glossary 术语表", bold=True, size=13, fill="#222222")
     lines = [
-        "Grade A | A 级：至少两类证据（nt / 蛋白 / RdRP 结构域）、竞争最佳命中为病毒，且回贴广度≥1x 不低于 {:.2f}、平均深度不低于 {}".format(breadth_threshold, _fmt_count(depth_threshold)),
-        "Grade B | B 级：同样多类证据且竞争最佳命中为病毒，但回贴验证缺失或未达标",
-        "Grade C | C 级：仅有单一类证据，或竞争情况未解决",
-        "Grade D | D 级：竞争最佳命中为细胞来源（宿主 / 细菌 / 真菌），大概率非病毒序列",
-        "breadth >=1x | 广度：contig 上被至少 1 条高质量回贴 reads 覆盖的位置比例（面板三纵轴）",
-        "mean depth | 平均深度：逐位置回贴深度的平均值（面板三横轴，对数刻度）",
-        "MAPQ>=20 | 仅统计比对质量不低于 20 的回贴 reads，排除错配与多位点比对的噪声",
-        "Reference-related group | 参考相关分组：推断与同一条参考病毒相关的全部 contig（面板二每行一组）",
-        "Log scale | 对数轴：面板一纵轴与面板三横轴按 10 的幂刻度，用于同时展示悬殊的数量级",
-        "Grades are heuristic review priorities, not infection or species confirmation | 分级仅是启发式复核优先级，不构成感染、物种或新病毒的确认",
+        "Grade A | A 级：至少两类证据且包含 nt、竞争汇总为 viral，MAPQ20 广度不低于 {:.2f}、平均深度不低于 {}".format(breadth_threshold, _fmt_count(depth_threshold)),
+        "Grade B | B 级：至少两类证据，且不满足 A 或 D；竞争未分类或缺少 nt 的候选也可为 B",
+        "Grade C | C 级：其余候选，通常为单类证据或未解决证据",
+        "Grade D | D 级：竞争汇总为 cellular，表示来源冲突，不能据此排除病毒",
+        "Discovery priority | 新病毒复核请同时查看 discovery_priority；mixed / ambiguous 对应 review_conflict，不自动归为 D",
+        "breadth >=1x | 广度：contig 中至少被 1 条 MAPQ>=20 回贴 read 覆盖的位置比例",
+        "mean depth | 平均深度：完整 contig 上逐位置深度的平均值；横轴位置为 log10(depth + 1)，刻度显示实际深度",
+        "MAPQ>=20 | 回贴比对质量过滤，不保证排除所有错配、多位点比对或污染",
+        "Reference-related group | 参考相关分组：按推断参考名称汇总的 contig；不是已确认病毒物种数",
+        "Grades and priorities are heuristic; they do not confirm infection, species or novelty | 分级及优先级不能确认感染、物种或新病毒",
     ]
     y = top_y + 26
     for line in lines:
-        fig.text(24, y, line, **{"size": 11, "fill": "#555555"})
-        y += 18
+        for wrapped in _wrap_text(line, fig.width - 48, 11):
+            fig.text(24, y, wrapped, size=11, fill="#555555")
+            y += 18
     return y + 16
 
 
@@ -297,21 +331,19 @@ def build_figure(rows, groups, breadth_threshold, depth_threshold):
     for row in rows:
         grade = (row.get("evidence_grade") or "").strip() or "unknown"
         counts[grade] = counts.get(grade, 0) + 1
-    total = len(rows)
-
     fig = rc.Figure(1400, 1120)
-    fig.text(24, 34, "Report summary", bold=True, **{"size": 15, "fill": "#222222"})
-    meta_bits = ["Candidates: {}".format(total)]
+    fig.text(24, 34, "Report summary", bold=True, size=15, fill="#222222")
+    meta_bits = ["Candidates: {}".format(len(rows))]
     meta_bits.extend("{}: {}".format(GRADE_SHORT.get(g, g), counts.get(g, 0)) for g in GRADE_ORDER)
     meta_bits.append("Groups: {}".format(len(groups)))
     meta_text = " | ".join(meta_bits)
-    fig.text(24, 56, meta_text, **{"size": 11, "fill": "#666666"})
-
+    fig.text(24, 56, meta_text, size=11, fill="#666666")
     _panel_grade_distribution(fig, counts, 90, 270, 120, 1330)
-    next_y = _panel_group_stack(fig, groups, 320, 15, 24, 1330)
-    scatter_top = max(760, next_y + 40)
-    _panel_coverage_scatter(fig, rows, scatter_top, scatter_top + 260, 24, 1330, breadth_threshold, depth_threshold)
-    glossary_bottom = _panel_glossary(fig, scatter_top + 260 + 70, breadth_threshold, depth_threshold)
+    next_y = _panel_group_stack(fig, groups, 355, 15, 24, 1330)
+    scatter_top = next_y + 60
+    scatter_bottom = _panel_coverage_scatter(fig, rows, scatter_top, scatter_top + 360,
+                                              24, 1330, breadth_threshold, depth_threshold)
+    glossary_bottom = _panel_glossary(fig, scatter_bottom + 24, breadth_threshold, depth_threshold)
     fig.height = max(1120, glossary_bottom)
     return fig, meta_text
 

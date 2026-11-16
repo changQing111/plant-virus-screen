@@ -6,7 +6,10 @@ for all requested contigs, and writes one MAPQ>=20 coverage curve figure
 per contig into ``coverage_plots/`` plus a manifest TSV. ``--max-contigs``
 caps the number of figures (0 means all) so ``--plots all`` cannot explode
 into thousands of files; capped contigs are still listed in the manifest
-with status ``skipped_cap`` for auditability.
+with status ``skipped_cap`` for auditability. Contigs with no depth rows but
+an explicit 0.0 mean depth / 0.0 breadth in the report table receive an
+all-zero curve and status ``ok_zero_depth`` instead of being silently
+skipped.
 """
 
 import argparse
@@ -117,6 +120,31 @@ def annotation_from_row(row):
     }
 
 
+def explicit_zero_depth_series(row):
+    """Return a full-zero curve for an explicitly zero-coverage contig.
+
+    samtools depth emits no rows at all for a contig absent from the BAM, so a
+    contig can be an A/B candidate with a legitimate 0.0 mean depth / 0.0
+    breadth in coverage_mapq20.tsv yet have no depth rows to plot. Only
+    synthesize a curve when the report table explicitly says both statistics
+    are zero; genuinely missing coverage data stays ``skipped_no_depth``.
+    """
+    length_text = (row.get("length") or row.get("qlen") or "").strip()
+    mean_text = (row.get("mapq20_mean_depth") or "").strip()
+    breadth_text = (row.get("mapq20_breadth_1x") or "").strip()
+    if not (length_text and mean_text and breadth_text):
+        return None
+    try:
+        length = int(length_text)
+        mean = float(mean_text)
+        breadth = float(breadth_text)
+    except ValueError:
+        return None
+    if length <= 0 or mean != 0.0 or breadth != 0.0:
+        return None
+    return [0] * length
+
+
 def main():
     args = parse_args()
 
@@ -153,8 +181,16 @@ def main():
             "pdf_path": "",
         }
         if not values:
-            manifest_rows.append(dict(base, status="skipped_no_depth"))
-            continue
+            zero_values = explicit_zero_depth_series(item["row"])
+            if zero_values is None:
+                manifest_rows.append(dict(base, status="skipped_no_depth"))
+                continue
+            values = zero_values
+            zero_depth = True
+        else:
+            # samtools depth -a can emit explicit all-zero rows instead of
+            # omitting the contig entirely; treat both as zero-depth figures.
+            zero_depth = not any(values)
 
         stats = module.compute_stats(values)
         base.update(
@@ -182,14 +218,14 @@ def main():
                 html_path=str(html_path.resolve()),
                 svg_path=str(svg_path.resolve()) if svg_path is not None else "",
                 pdf_path=str(pdf_path.resolve()) if pdf_path is not None else "",
-                status="ok",
+                status="ok_zero_depth" if zero_depth else "ok",
             )
         )
         generated += 1
         outputs = [html_path.name]
         if pdf_path is not None:
             outputs.append(pdf_path.name)
-        print("Generated:", contig, "->", ", ".join(outputs))
+        print("Generated{}:".format(" (explicit zero depth)" if zero_depth else ""), contig, "->", ", ".join(outputs))
 
     for item in capped:
         manifest_rows.append(

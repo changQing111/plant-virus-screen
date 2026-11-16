@@ -191,6 +191,8 @@ def build_html(contig_id, depth_values, annotation, bins=1000):
     ]
     if capped:
         meta_bits.append("y-axis capped at {:.1f} (P99 x 1.25)".format(y_cap))
+    if stats["max"] == 0:
+        meta_bits.append("zero depth: no MAPQ>=20 reads mapped to this contig")
     meta_text = " | ".join(meta_bits)
 
     # Plot frame and baseline.
