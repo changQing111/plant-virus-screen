@@ -4,6 +4,7 @@ import argparse,csv,gzip,json,os,shutil,subprocess,sys,time
 from pathlib import Path
 from collections import defaultdict
 from taxonomy import load_map, digest
+from evidence_policy import POLICY_VERSION, VIRAL_RDRP, allowed_model, regional_competition
 from Bio import SeqIO
 from Bio.Seq import Seq
 BASE='/data/changq/miniforge3/'
@@ -81,7 +82,7 @@ def main():
  if not a.blastn and not list(Path(a.nt_db).parent.glob(Path(a.nt_db).name+'.n*')):raise FileNotFoundError(a.nt_db)
  if a.preflight:print(json.dumps({'status':'preflight_passed','tools':tools,'arguments':vars(a)},indent=2));return
  out=Path(a.out).resolve();out.mkdir(parents=True,exist_ok=False)
- manifest={'status':'running','arguments':vars(a),'tools':tools,'started':time.time(),'commands':[],'taxonomy_provenance':taxonomy_provenance}
+ manifest={'status':'running','arguments':vars(a),'tools':tools,'started':time.time(),'commands':[],'taxonomy_provenance':taxonomy_provenance,'evidence_policy_version':POLICY_VERSION,'competition_method':'regional_v1','hmm_policy':'curated_core_v1','hmm_panel':VIRAL_RDRP}
  def save(): (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
  def run(args,stdout=None):
   args=list(map(str,args));manifest['commands'].append(args);save()
@@ -95,6 +96,8 @@ def main():
    ids[r.id]=len(r)
   if not ids:raise ValueError('Empty FASTA')
   nt=Path(a.blastn) if a.blastn else out/'blastn.tsv';aa=Path(a.blastx) if a.blastx else out/'blastx.tsv'
+  if a.blastn:
+   shutil.copyfile(nt,out/'blastn.tsv');shutil.copyfile(aa,out/'blastx.tsv')
   if not a.blastn:
    run([tools['blastn'],'-task','blastn','-query',a.query,'-db',a.nt_db,'-evalue','1e-5','-num_threads',a.threads,'-outfmt','6 qseqid sseqid qlen slen pident length qcovs qcovhsp qcovus mismatch gapopen qstart qend sstart send evalue bitscore','-out',nt])
    run([tools['diamond'],'blastx','--very-sensitive','--query',a.query,'--db',a.viral_db,'--threads',a.threads,'--evalue','1e-5','--max-target-seqs','25','--outfmt','6','qseqid','sseqid','qlen','slen','pident','length','qcovhsp','mismatch','gapopen','qstart','qend','sstart','send','evalue','bitscore','--out',aa])
@@ -106,7 +109,8 @@ def main():
     block.append(line)
     if line.strip()=='//':
      desc=' '.join(x.strip() for x in block if x.startswith(('NAME ','DESC ')))
-     if any(x in desc.lower() for x in ('rdrp','rna-dependent rna polymerase','rna dependent rna polymerase','rna replicase')):
+     fields={x.split()[0]:x.split()[1] for x in block if x.startswith(('NAME ','ACC '))}
+     if allowed_model(fields.get('ACC',''),fields.get('NAME','')):
       dst.writelines(block);models.append(desc)
      block=[]
   if not models:raise ValueError('No RdRP profiles selected')
@@ -151,6 +155,8 @@ def main():
     if h[0] not in best or float(h[9])>float(best[h[0]]['bitscore']):best[h[0]]=row
   else:comp.write_text('')
   table(out/'competitive_annotated.tsv',['query_id','subject_id','bitscore','evalue','qstart','qend','classification','annotation','taxid','lineage','scientific_name','mapping_status','taxonomy_source'],comp_rows)
+  regional,region_rows=regional_competition(comp_rows)
+  table(out/'competitive_regions.tsv',['query_id','subject_id','qstart','qend','classification','bitscore','competing_subject','competing_bitscore','relative_margin','region_status'],region_rows)
   manifest['competitive_taxonomy_counts']={k:sum(r['classification']==k for r in comp_rows) for k in ('viral','cellular','unclassified')}
   manifest['competitive_unmapped_subjects']=len({r['subject_id'] for r in comp_rows if r['mapping_status']=='subject_not_mapped'})
   if not a.no_mapping and candidates:
@@ -165,14 +171,14 @@ def main():
    with open(out/'mapping.flagstat.txt','w') as f:run([tools['samtools'],'flagstat',out/'mapping.bam'],f)
    bed=out/'candidates.bed';bed.write_text(''.join(f'{q}\t0\t{ids[q]}\n' for q in ids if q in candidates))
    for name,mq in [('all',0),('mapq20',20)]:
-    with open(out/f'depth_{name}.tsv','w') as f:run([tools['samtools'],'depth','-a','-b',bed,'-Q',mq,out/'mapping.bam'],f)
+    with open(out/f'depth_{name}.tsv','w') as f:run([tools['samtools'],'depth','-s','-a','-b',bed,'-Q',mq,out/'mapping.bam'],f)
     stats={q:[0,0,0] for q in candidates}
     for h in hits(out/f'depth_{name}.tsv',3):
      if h[0] in stats:
       d=int(h[2]);s=stats[h[0]];s[0]+=d;s[1]+=d>0;s[2]+=d>=5
     table(out/f'coverage_{name}.tsv',['query_id','length','mean_depth','breadth_1x','breadth_5x'],[dict(query_id=q,length=ids[q],mean_depth=s[0]/ids[q],breadth_1x=s[1]/ids[q],breadth_5x=s[2]/ids[q]) for q,s in sorted(stats.items())])
    (out/'mapping.sam').unlink()
-  rows=[dict(query_id=q,length=ids[q],retained=int(q in candidates),evidence=';'.join(sorted(evidence.get(q,[]))),competitive_best_class=best[q]['classification'] if q in best else 'no_hit',mapping_status='not_requested' if a.no_mapping else ('completed' if candidates else 'no_candidates'),host_status='undetermined',interpretation='candidate_requires_validation' if q in candidates else 'no_evidence_under_current_search') for q in ids]
+  rows=[dict(query_id=q,length=ids[q],retained=int(q in candidates),evidence=';'.join(sorted(evidence.get(q,[]))),competitive_best_class=regional.get(q,'no_hit'),mapping_status='not_requested' if a.no_mapping else ('completed' if candidates else 'no_candidates'),host_status='undetermined',interpretation='candidate_requires_validation' if q in candidates else 'no_evidence_under_current_search') for q in ids]
   table(out/'all_contigs_audit.tsv',list(rows[0]),rows)
   table(out/'final_candidates.tsv',list(rows[0]),[r for r in rows if r['retained']])
   observed={r.id for r in records(out/'candidates.fasta')}

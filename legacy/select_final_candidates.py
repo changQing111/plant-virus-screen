@@ -257,13 +257,78 @@ def split_multi_value(text):
     return [part.strip() for part in parts if part.strip()]
 
 
+# GenBank/UniProt hit descriptions carry qualifiers that are not part of the
+# virus name (", complete genome", "isolate X", "segment 1", "gene, complete
+# cds", "(strain O)"). VMR name/species/genus joins only succeed on the bare
+# name. Each pattern removes the marker and everything after it; no fuzzy or
+# partial matching is introduced, and a join is still accepted only when the
+# resulting name resolves to exactly one VMR value (unique_mapping_value).
+REFERENCE_TAIL_PATTERNS = (
+    re.compile(r",\s*(?:complete|coding-complete|partial|putative)\b.*$", re.IGNORECASE),
+    # Require trailing content after the isolate/strain token: a virus whose
+    # real name contains the word (e.g. "Grapevine isolate virus") must not
+    # be truncated to a shorter, potentially VMR-matching name.
+    re.compile(r"\s+isolate\s+\S+\s+.+$", re.IGNORECASE),
+    re.compile(r"\s+strain\s+\S+\s+.+$", re.IGNORECASE),
+    re.compile(r"\s+segment\s+[A-Za-z0-9-]+\b.*$", re.IGNORECASE),
+    re.compile(r"\s*\([^)]*\bstrain\b[^)]*\)\s*$", re.IGNORECASE),
+)
+
+
+def clean_reference_name(text):
+    """Conservatively reduce a hit description to a bare virus name."""
+    value = (text or "").strip()
+    if " | " in value:
+        value = value.split(" | ", 1)[1].strip()
+    for pattern in REFERENCE_TAIL_PATTERNS:
+        value = pattern.sub("", value).strip()
+    return value.strip(" ,;:-")
+
+
+def reference_name_concordance(nt_name, protein_name):
+    """Flag disagreement between nt and protein reference names.
+
+    This is a bookkeeping signal, not a taxonomic judgement: a mismatch may
+    reflect a real co-infection, a misassembled chimera, a database label
+    difference, or a false positive. It never removes a candidate.
+    """
+    a = normalize_name(nt_name).split()
+    b = normalize_name(protein_name).split()
+    if not a and not b:
+        return "unresolved"
+    if not a or not b:
+        return "single_reference"
+    shared = min(len(a), len(b))
+    if shared >= 2 and a[:shared] == b[:shared]:
+        return "concordant"
+    return "discordant"
+
+
+# INSDC/RefSeq nucleotide accession forms represented in the bundled VMR.
+# Boundaries and complete forms are intentional: the previous loose pattern
+# extracted fragments such as A0, S5 and TBU1 from UniProt IDs.
+NUCLEOTIDE_ACCESSION_RE = re.compile(
+    r"(?<![A-Z0-9])(?:"
+    r"[A-Z]{2}_\d{6,9}|"       # RefSeq, e.g. NC_001477
+    r"[A-Z]{6}\d{9}|"          # newer WGS/TSA, e.g. CAJDJZ010000002
+    r"[A-Z]{4}\d{8,10}|"       # classic WGS/TSA
+    r"[A-Z]{2}\d{6}|"          # modern INSDC, e.g. MH447526
+    r"[A-Z]\d{5}"              # legacy INSDC, e.g. X14855
+    r")(?:\.\d+)?(?![A-Z0-9])"
+)
+
+
 def extract_accessions(text):
-    text = text or ""
-    accessions = set()
-    for token in re.findall(r"[A-Z]{1,4}_?\d+(?:\.\d+)?", text):
-        accessions.add(token)
-        accessions.add(token.split(".")[0])
-    return list(accessions)
+    text = (text or "").upper()
+    accessions = []
+    seen = set()
+    for match in NUCLEOTIDE_ACCESSION_RE.finditer(text):
+        token = match.group(0)
+        for value in (token, token.split(".", 1)[0]):
+            if value not in seen:
+                seen.add(value)
+                accessions.append(value)
+    return accessions
 
 
 def extract_os_name(text):
@@ -278,6 +343,9 @@ def genome_type_cn(genome):
     mapping = {
         "dsdna": "双链DNA病毒",
         "ssdna": "单链DNA病毒",
+        # VMR MSL41 also writes ambisense ssDNA genomes as ssDNA(+/-).
+        "ssdna(+/-)": "单链DNA病毒",
+        "ssdna(-/+)": "单链DNA病毒",
         "dsrna": "双链RNA病毒",
         "ssrna(+)": "正单链RNA病毒",
         "ssrna(-)": "负单链RNA病毒",
@@ -294,6 +362,8 @@ def baltimore_group(genome):
     mapping = {
         "dsdna": "I",
         "ssdna": "II",
+        "ssdna(+/-)": "II",
+        "ssdna(-/+)": "II",
         "dsrna": "III",
         "ssrna(+)": "IV",
         "ssrna(-)": "V",
@@ -419,34 +489,41 @@ def annotate_with_vmr(rows, vmr_xlsx):
         genome = ""
         host_source = ""
 
-        candidate_strings = [
-            row.get("best_nt_hit", ""),
-            row.get("best_protein_hit", ""),
-            row.get("putative_virus", ""),
-            row.get("candidate_name", ""),
-        ]
-
-        for text in candidate_strings:
+        # VMR stores nucleotide GenBank/RefSeq accessions. Restrict accession
+        # joins to the nucleotide hit; protein IDs and inferred names are
+        # handled by the explicit name/species/genus fallbacks below.
+        for acc in extract_accessions(row.get("best_nt_hit", "")):
+            genome = unique_mapping_value(accession_map, acc)
+            if not host_source:
+                host_source = unique_mapping_value(accession_host_map, acc)
             if genome:
                 break
-            for acc in extract_accessions(text):
-                genome = unique_mapping_value(accession_map, acc)
-                if not host_source:
-                    host_source = unique_mapping_value(accession_host_map, acc)
-                if genome:
-                    break
 
-        names_to_try = []
+        raw_names = []
+        cleaned_names = []
+
+        def add_name(value):
+            # Every exact description from every source is tried before any
+            # cleaned name, so a shortened name can never outrank a genuine
+            # exact VMR match from another hit.
+            value = (value or "").strip()
+            if not value:
+                return
+            if value not in raw_names:
+                raw_names.append(value)
+            cleaned = clean_reference_name(value)
+            if cleaned and cleaned != value and cleaned not in cleaned_names:
+                cleaned_names.append(cleaned)
+
         nt_hit = row.get("best_nt_hit", "")
-        if " | " in nt_hit:
-            names_to_try.append(nt_hit.split(" | ", 1)[1].split(", complete sequence")[0].strip())
+        add_name(nt_hit.split(" | ", 1)[1].strip() if " | " in nt_hit else "")
         protein_hit = row.get("best_protein_hit", "")
-        if " | " in protein_hit:
-            names_to_try.append(protein_hit.split(" | ", 1)[1])
+        add_name(protein_hit.split(" | ", 1)[1] if " | " in protein_hit else "")
         os_name = extract_os_name(protein_hit)
         if os_name:
-            names_to_try.append(os_name)
-        names_to_try.append(row.get("putative_virus", "").replace("-like", ""))
+            add_name(os_name)
+        add_name(row.get("putative_virus", "").replace("-like", ""))
+        names_to_try = raw_names + [name for name in cleaned_names if name not in raw_names]
 
         for name in names_to_try:
             norm = normalize_name(name)
@@ -531,7 +608,15 @@ def infer_putative_virus_name(row):
 
 
 def infer_segment_or_protein(row):
-    anno = row.get("blastx_anno", "").lower()
+    """Describe which evidence actually supports a candidate.
+
+    The old fallthrough labelled every contig without a recognizable protein
+    keyword as "Best protein-supported candidate", including nucleotide-only
+    and RdRP-domain-only contigs with an empty protein hit. Evidence fields
+    are used when present; the legacy summary table (which has no `evidence`
+    column) keeps its original fallback for backwards compatibility.
+    """
+    anno = (row.get("blastx_anno") or "").lower()
     if "rna-directed rna polymerase" in anno or "replicase" in anno:
         return "RdRP/replicase"
     if "nucleoprotein" in anno:
@@ -546,9 +631,26 @@ def infer_segment_or_protein(row):
         return "Coat protein"
     if "polyprotein" in anno:
         return "Polyprotein"
-    if row.get("blastn_hit"):
-        return "Best nucleotide-supported candidate"
-    return "Best protein-supported candidate"
+
+    if "evidence" not in row:
+        # Legacy summary-table rows have no unified evidence column. Keep the
+        # original blastn_hit behaviour exactly: a nucleotide hit wins over a
+        # non-keyword protein description such as "hypothetical protein".
+        if row.get("blastn_hit"):
+            return "Best nucleotide-supported candidate"
+        return "Best protein-supported candidate"
+
+    protein_hit = (row.get("best_protein_hit") or "").strip()
+    if protein_hit or anno:
+        return "Best protein-supported candidate"
+
+    evidence = {x.strip() for x in (row.get("evidence") or "").split(";") if x.strip()}
+    if "RdRP_domain" in evidence:
+        return "RdRP-domain-only candidate"
+    nt_hit = (row.get("best_nt_hit") or "").strip() or (row.get("blastn_hit") or "").strip()
+    if "nt" in evidence or nt_hit or (row.get("blastn_anno") or "").strip():
+        return "Nucleotide-supported candidate"
+    return "Unresolved viral feature"
 
 
 def virus_group_key(row):
